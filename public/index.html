@@ -161,7 +161,7 @@
             <h2>Generar una ruta</h2>
             <p class="ayuda">Describe tu meta. La IA arma módulos usando solo cursos de tu catálogo.</p>
             <form id="form-generar" class="fila-col">
-              <textarea name="objetivo" rows="2" placeholder="Ej. Quiero pasar de programar en Python a analizar datos de ventas" required minlength="3"></textarea>
+              <textarea name="objetivo" rows="2" placeholder="Ej. Quiero pasar de programar en Python a analizar datos de ventas" required minlength="3" maxlength="4000"></textarea>
               <button type="submit">Generar ruta</button>
             </form>
           </div>
@@ -170,7 +170,7 @@
             <h2>Evaluar una ruta mía</h2>
             <p class="ayuda">Pega la ruta que propones (temas o pasos). Te diré si encaja con tus habilidades.</p>
             <form id="form-evaluar" class="fila-col">
-              <textarea name="ruta" rows="3" placeholder="Ej. Git → Docker → Kubernetes → Terraform" required minlength="3"></textarea>
+              <textarea name="ruta" rows="3" placeholder="Ej. Git → Docker → Kubernetes → Terraform" required minlength="3" maxlength="4000"></textarea>
               <button type="submit">Evaluar</button>
             </form>
           </div>

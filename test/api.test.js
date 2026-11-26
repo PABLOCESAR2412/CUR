@@ -132,3 +132,41 @@ test('ruta de API desconocida responde 404 en JSON', async () => {
   assert.equal(res.status, 404);
   assert.match(res.body.error, /no encontrada/);
 });
+
+test('una ruta conocida con método incorrecto responde 405', async () => {
+  assert.equal((await call('PUT', '/api/cursos', {})).status, 405);
+});
+
+test('un nombre de skill mal codificado responde 400', async () => {
+  assert.equal((await call('DELETE', '/api/perfil/skills/%ZZ')).status, 400);
+});
+
+test('reducir el avance de un curso completado lo devuelve a en curso', async () => {
+  const curso = (await call('POST', '/api/cursos', { title: 'Docker', status: 'completado' })).body;
+  const reduced = await call('PATCH', `/api/cursos/${curso.id}`, { progress: 50 });
+  assert.equal(reduced.status, 200);
+  assert.equal(reduced.body.status, 'en_curso');
+  assert.equal(reduced.body.progress, 50);
+
+  await call('PATCH', `/api/cursos/${curso.id}`, { status: 'completado' });
+  const reopened = await call('PATCH', `/api/cursos/${curso.id}`, { status: 'catalogo' });
+  assert.equal(reopened.body.progress, 0);
+});
+
+test('limita los textos enviados a Gemini', async () => {
+  const largo = 'a'.repeat(4001);
+  assert.equal((await call('POST', '/api/rutas/generar', { objetivo: largo })).status, 400);
+  assert.equal((await call('POST', '/api/rutas/evaluar', { ruta: largo })).status, 400);
+});
+
+test('API_TOKEN exige autorización Bearer cuando está configurado', async () => {
+  const unauthenticated = await handleApi(new Request('http://test/api/resumen'), {
+    db, gemini: gemini(), apiToken: 'secreto',
+  });
+  assert.equal(unauthenticated.status, 401);
+
+  const authorized = await handleApi(new Request('http://test/api/resumen', {
+    headers: { Authorization: 'Bearer secreto' },
+  }), { db, gemini: gemini(), apiToken: 'secreto' });
+  assert.equal(authorized.status, 200);
+});

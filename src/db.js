@@ -39,6 +39,12 @@ export function createDb(d1) {
       const current = await getCourse(id);
       if (!current) return null;
       const merged = { ...current, ...patch };
+      if (patch.progress !== undefined && patch.progress < 100 && merged.status === 'completado') {
+        merged.status = 'en_curso';
+      }
+      if (current.status === 'completado' && patch.status && patch.status !== 'completado' && patch.progress === undefined) {
+        merged.progress = 0;
+      }
       if (merged.status === 'completado') merged.progress = 100;
       await q(`
         UPDATE courses SET title=?, provider=?, source=?, url=?, level=?, hours=?, topics=?,

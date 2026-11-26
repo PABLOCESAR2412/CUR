@@ -14,14 +14,37 @@ const NIVEL_LABEL = { 1: 'Conoce el concepto', 2: 'Con ayuda', 3: 'Trabaja solo'
 let cursosPorId = new Map();
 
 async function api(method, path, body) {
-  const res = await fetch(path, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
-  return data;
+  let token = '';
+  try {
+    token = localStorage.getItem('cur-api-token') ?? '';
+  } catch {
+    token = '';
+  }
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const headers = body ? { 'Content-Type': 'application/json' } : {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(path, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (res.status === 401 && attempt === 0) {
+      token = window.prompt('Token de acceso para CUR:')?.trim() ?? '';
+      if (!token) throw new Error(data.error ?? 'Token de acceso requerido');
+      try {
+        localStorage.setItem('cur-api-token', token);
+      } catch {}
+      continue;
+    }
+
+    if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+    return data;
+  }
+
+  throw new Error('No se pudo completar la solicitud');
 }
 
 function setMsg(el, text, kind = '') {
@@ -266,15 +289,16 @@ $('#form-evaluar').addEventListener('submit', (e) => {
 });
 
 async function cargarHistorial() {
-  const rutas = await api('GET', '/api/rutas');
+  const [rutas] = await Promise.all([api('GET', '/api/rutas'), cargarCursosCache()]);
   $('#historial').innerHTML = rutas.length
     ? rutas.map((r) => `
-      <div class="item">
-        <div class="item-head">
+      <details class="item">
+        <summary class="item-head">
           <span class="item-title">${esc(r.objetivo.length > 80 ? `${r.objetivo.slice(0, 80)}…` : r.objetivo)}</span>
           <span class="chip">${r.tipo === 'generar' ? 'Generada' : 'Evaluada'} · ${esc(new Date(r.created_at).toLocaleDateString('es-EC'))}</span>
-        </div>
-      </div>`).join('')
+        </summary>
+        ${(r.tipo === 'generar' ? renderGenerar : renderEvaluar)(r.resultado)}
+      </details>`).join('')
     : '<p class="vacio">Todavía no generas ni evalúas rutas.</p>';
 }
 

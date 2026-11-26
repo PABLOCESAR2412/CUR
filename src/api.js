@@ -2,6 +2,7 @@ import { STATUSES, PRICES } from './db.js';
 import { compactCatalog, describePerfil, promptGenerar, promptEvaluar, validarGenerar, validarEvaluar } from './rutas.js';
 
 const MAX_BODY = 200_000;
+const MAX_RUTA_TEXT = 4_000;
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -75,6 +76,7 @@ async function handleRuta(kind, body, { db, gemini }) {
   if (kind === 'generar') {
     const objetivo = typeof body.objetivo === 'string' ? body.objetivo.trim() : '';
     if (objetivo.length < 3) throw new HttpError(400, 'Describe tu objetivo (mínimo 3 caracteres)');
+    if (objetivo.length > MAX_RUTA_TEXT) throw new HttpError(400, `El objetivo no puede superar ${MAX_RUTA_TEXT} caracteres`);
     const raw = await gemini.generateJson(promptGenerar({ objetivo, catalogo, perfil }));
     const resultado = validarGenerar(raw, ids);
     const id = await db.saveRuta({ tipo: 'generar', objetivo, resultado });
@@ -83,10 +85,17 @@ async function handleRuta(kind, body, { db, gemini }) {
 
   const ruta = typeof body.ruta === 'string' ? body.ruta.trim() : '';
   if (ruta.length < 3) throw new HttpError(400, 'Escribe la ruta que quieres evaluar');
+  if (ruta.length > MAX_RUTA_TEXT) throw new HttpError(400, `La ruta no puede superar ${MAX_RUTA_TEXT} caracteres`);
   const raw = await gemini.generateJson(promptEvaluar({ ruta, catalogo, perfil }));
   const resultado = validarEvaluar(raw, ids);
   const id = await db.saveRuta({ tipo: 'evaluar', objetivo: ruta, resultado });
   return { id, ...resultado };
+}
+
+function knownPath(path) {
+  return ['/api/resumen', '/api/cursos', '/api/perfil', '/api/perfil/settings', '/api/rutas/generar', '/api/rutas/evaluar', '/api/rutas'].includes(path)
+    || /^\/api\/cursos\/\d+$/.test(path)
+    || /^\/api\/perfil\/skills\/[^/]+$/.test(path);
 }
 
 async function route(request, url, deps) {
@@ -126,7 +135,12 @@ async function route(request, url, deps) {
 
   const skillMatch = path.match(/^\/api\/perfil\/skills\/([^/]+)$/);
   if (skillMatch) {
-    const name = decodeURIComponent(skillMatch[1]).trim();
+    let name;
+    try {
+      name = decodeURIComponent(skillMatch[1]).trim();
+    } catch {
+      throw new HttpError(400, 'Nombre de skill mal codificado');
+    }
     if (!name) throw new HttpError(400, 'Nombre de skill vacío');
     if (m === 'PUT') {
       const level = Number(body.level);
@@ -158,6 +172,7 @@ async function route(request, url, deps) {
   if (m === 'POST' && path === '/api/rutas/evaluar') return [200, await handleRuta('evaluar', body, deps)];
   if (m === 'GET' && path === '/api/rutas') return [200, await db.listRutas()];
 
+  if (knownPath(path)) throw new HttpError(405, 'Método no permitido');
   throw new HttpError(404, 'Ruta no encontrada');
 }
 
@@ -165,6 +180,9 @@ async function route(request, url, deps) {
 export async function handleApi(request, deps) {
   const url = new URL(request.url);
   try {
+    if (deps.apiToken && request.headers.get('Authorization') !== `Bearer ${deps.apiToken}`) {
+      throw new HttpError(401, 'Token de acceso inválido o ausente');
+    }
     const [status, payload] = await route(request, url, deps);
     return json(status, payload);
   } catch (err) {

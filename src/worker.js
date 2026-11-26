@@ -12,9 +12,9 @@ export default {
       const db = createDb(env.DB);
       const gemini = createGemini({
         apiKey: env.GEMINI_API_KEY,
-        model: env.GEMINI_MODEL ?? 'gemini-3.8-flash',
+        model: env.GEMINI_MODEL ?? 'gemini-2.5-flash',
       });
-      return handleApi(request, { db, gemini });
+      return handleApi(request, { db, gemini, apiToken: env.API_TOKEN });
     }
 
     return env.ASSETS.fetch(request);

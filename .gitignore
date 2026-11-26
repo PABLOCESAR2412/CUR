@@ -4,6 +4,10 @@ node_modules/
 # Secretos locales (la clave de Gemini vive aquí)
 .env
 .env.*
+.dev.vars
+
+# Cloudflare Wrangler
+.wrangler/
 
 # Datos personales: base de datos SQLite con tu avance y rutas
 data/
