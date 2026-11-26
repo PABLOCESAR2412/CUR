@@ -10,7 +10,7 @@
     {
       "binding": "DB",
       "database_name": "cur",
-      "database_id": "REEMPLAZA_CON_EL_ID_DE_TU_BASE",
+      "database_id": "1aba2274-808c-4c58-bc8b-ddc67127fb0b",
       "migrations_dir": "migrations"
     }
   ],
