@@ -16,176 +16,205 @@
 </head>
 <body>
   <header class="top">
-    <div class="marca">
-      <span class="marca-icono" aria-hidden="true"></span>
-      <span class="marca-nombre">CUR</span>
+    <div class="top-interior">
+      <div class="marca">
+        <span class="marca-icono" aria-hidden="true"><span class="icono" aria-hidden="true">school</span></span>
+        <span class="marca-nombre">CUR</span>
+      </div>
+      <nav class="nav-principal" aria-label="Secciones">
+        <button type="button" data-tab="dashboard" aria-controls="tab-dashboard" aria-current="page" class="active">Avance</button>
+        <button type="button" data-tab="catalogo" aria-controls="tab-catalogo">Catálogo</button>
+        <button type="button" data-tab="perfil" aria-controls="tab-perfil">Mi perfil</button>
+        <button type="button" data-tab="rutas" aria-controls="tab-rutas">Rutas</button>
+      </nav>
+      <div class="sidebar-footer">
+        <button id="tema" class="tema" type="button" aria-label="Cambiar tema">
+          <span class="icono" data-tema-icono aria-hidden="true">dark_mode</span>
+          <span id="tema-texto">Tema</span>
+        </button>
+      </div>
     </div>
-    <nav aria-label="Secciones">
-      <button data-tab="dashboard" class="active">Avance</button>
-      <button data-tab="catalogo">Catálogo</button>
-      <button data-tab="perfil">Mi perfil</button>
-      <button data-tab="rutas">Rutas</button>
-    </nav>
-    <button id="tema" class="tema" type="button" aria-label="Cambiar tema"></button>
   </header>
 
-  <main>
-    <section id="tab-dashboard" class="tab active">
-      <header class="encabezado-pagina">
-        <span class="eyebrow">Progreso</span>
-        <h1>Tu avance</h1>
-        <p class="ayuda">Lo que estás cursando y lo que ya terminaste.</p>
-      </header>
-      <div id="totales" class="totales"></div>
-      <h2>En curso</h2>
-      <div id="en-curso" class="lista"></div>
-      <h2>Completados</h2>
-      <div id="completados" class="lista"></div>
-    </section>
-
-    <section id="tab-catalogo" class="tab">
-      <header class="encabezado-pagina">
-        <span class="eyebrow">Biblioteca</span>
-        <h1>Catálogo</h1>
-        <p class="ayuda">Guarda cursos de cualquier fuente y actualiza su estado.</p>
-      </header>
-
-      <form id="form-curso" class="card form-grid">
-        <h2 class="span-2">Agregar curso</h2>
-        <label>Título<input name="title" required maxlength="200" placeholder="Ej. Python for Everybody"></label>
-        <label>Proveedor<input name="provider" placeholder="Coursera, Udemy, Google…"></label>
-        <label>Fuente
-          <select name="source">
-            <option value="coursera">Coursera</option>
-            <option value="udemy">Udemy</option>
-            <option value="telegram">Telegram</option>
-            <option value="google">Google</option>
-            <option value="otro">Otro</option>
-          </select>
-        </label>
-        <label>Enlace<input name="url" type="url" placeholder="https://"></label>
-        <label>Nivel<input name="level" placeholder="Básico, intermedio…"></label>
-        <label>Horas<input name="hours" type="number" min="0" step="0.5"></label>
-        <label class="span-2">Temas (separados por coma)<input name="topics" placeholder="python, sql, datos"></label>
-
-        <div class="campo">
-          <span class="etiqueta">Precio</span>
-          <div class="seg" data-campo="price" data-default="desconocido">
-            <input type="hidden" name="price" value="desconocido">
-            <button type="button" data-valor="gratis" aria-pressed="false">Gratis</button>
-            <button type="button" data-valor="pago" aria-pressed="false">Pago</button>
-            <button type="button" data-valor="desconocido" aria-pressed="true">Desconocido</button>
-          </div>
+  <div class="workspace">
+    <main>
+      <section id="tab-dashboard" class="tab active">
+        <header class="encabezado-pagina">
+          <h1>Avance</h1>
+          <p class="ayuda">Consulta tu progreso y actualiza el avance de tus cursos.</p>
+        </header>
+        <div id="totales" class="totales" aria-label="Resumen de cursos"></div>
+        <div class="grupo-encabezado">
+          <h2>En curso</h2>
+          <span id="conteo-activos" class="chip primario"></span>
         </div>
-        <div class="campo">
-          <span class="etiqueta">Estado</span>
-          <div class="seg" data-campo="status" data-default="catalogo">
-            <input type="hidden" name="status" value="catalogo">
-            <button type="button" data-valor="catalogo" aria-pressed="true">Guardado</button>
-            <button type="button" data-valor="en_curso" aria-pressed="false">En curso</button>
-            <button type="button" data-valor="completado" aria-pressed="false">Completado</button>
-          </div>
+        <div id="en-curso" class="lista"></div>
+        <div class="grupo-encabezado">
+          <h2>Completados</h2>
+          <span id="conteo-completados" class="chip"></span>
         </div>
-        <label>Avance (%)<input name="progress" type="number" min="0" max="100" value="0"></label>
+        <div id="completados" class="lista"></div>
+      </section>
 
-        <div class="span-2 fila"><button type="submit">Guardar curso</button> <span id="msg-curso" class="msg"></span></div>
-      </form>
-
-      <div class="filtros">
-        <span class="etiqueta">Ver</span>
-        <div class="seg" id="filtro-estado" data-campo="filtro" data-default="">
-          <input type="hidden" value="">
-          <button type="button" data-valor="" aria-pressed="true">Todos</button>
-          <button type="button" data-valor="catalogo" aria-pressed="false">Guardados</button>
-          <button type="button" data-valor="en_curso" aria-pressed="false">En curso</button>
-          <button type="button" data-valor="completado" aria-pressed="false">Completados</button>
-        </div>
-      </div>
-      <div id="lista-catalogo" class="lista"></div>
-    </section>
-
-    <section id="tab-perfil" class="tab">
-      <header class="encabezado-pagina">
-        <span class="eyebrow">Perfil</span>
-        <h1>Mi perfil</h1>
-        <p class="ayuda">Tus habilidades y preferencias. Las rutas se calculan con esto.</p>
-      </header>
-
-      <div class="card">
-        <h2>Habilidades</h2>
-        <p class="ayuda">Registra cada habilidad con tu nivel real: 1 conoce el concepto · 2 con ayuda · 3 trabaja solo · 4 sólido · 5 experto.</p>
-        <form id="form-skill" class="fila">
-          <input name="name" placeholder="Ej. Python" required maxlength="60" aria-label="Habilidad">
-          <div class="seg" data-campo="level" data-default="3" role="group" aria-label="Nivel">
-            <input type="hidden" name="level" value="3">
-            <button type="button" data-valor="1" aria-pressed="false">1</button>
-            <button type="button" data-valor="2" aria-pressed="false">2</button>
-            <button type="button" data-valor="3" aria-pressed="true">3</button>
-            <button type="button" data-valor="4" aria-pressed="false">4</button>
-            <button type="button" data-valor="5" aria-pressed="false">5</button>
+      <section id="tab-catalogo" class="tab">
+        <header class="encabezado-pagina">
+          <div>
+            <h1>Catálogo de cursos</h1>
+            <p class="ayuda">Guarda cursos de cualquier fuente y actualiza su estado.</p>
           </div>
-          <button type="submit">Guardar</button>
-        </form>
-        <div id="lista-skills" class="lista"></div>
-      </div>
+          <div class="pagina-acciones">
+            <button type="button" id="abrir-curso" aria-haspopup="dialog"><span class="icono" aria-hidden="true">add</span> Agregar curso</button>
+          </div>
+        </header>
 
-      <div class="card">
-        <h2>Preferencias</h2>
-        <form id="form-settings" class="form-grid">
-          <label>Horas por semana<input name="horas_semana" type="number" min="0" max="168" step="0.5"></label>
-          <label>Idioma de los cursos<input name="idioma" placeholder="es"></label>
-          <div class="campo span-2">
-            <span class="etiqueta">Presupuesto</span>
-            <div class="seg" data-campo="presupuesto" data-default="cualquiera">
-              <input type="hidden" name="presupuesto" value="cualquiera">
-              <button type="button" data-valor="cualquiera" aria-pressed="true">Cualquiera</button>
-              <button type="button" data-valor="gratis" aria-pressed="false">Solo gratis</button>
-              <button type="button" data-valor="pago" aria-pressed="false">Acepto pago</button>
+        <div class="catalogo-toolbar">
+          <div class="filtros">
+            <div class="seg" id="filtro-estado" data-campo="filtro" data-default="" role="group" aria-label="Filtrar por estado">
+              <input type="hidden" value="">
+              <button type="button" data-valor="" aria-pressed="true">Todos</button>
+              <button type="button" data-valor="catalogo" aria-pressed="false">Guardados</button>
+              <button type="button" data-valor="en_curso" aria-pressed="false">En curso</button>
+              <button type="button" data-valor="completado" aria-pressed="false">Completados</button>
             </div>
           </div>
-          <div class="span-2 fila"><button type="submit">Guardar preferencias</button> <span id="msg-settings" class="msg"></span></div>
-        </form>
-      </div>
-    </section>
+          <p id="msg-catalogo" class="msg" role="status"></p>
+        </div>
+        <div id="lista-catalogo" class="lista catalogo-grid"></div>
+        <dialog id="curso-dialog" class="curso-dialog" aria-labelledby="curso-dialog-titulo">
+          <div class="dialog-encabezado">
+            <h2 id="curso-dialog-titulo">Agregar curso</h2>
+            <button type="button" id="cerrar-curso" class="secundario icono-boton" aria-label="Cerrar formulario"><span class="icono" aria-hidden="true">close</span></button>
+          </div>
+          <form id="form-curso" class="form-grid">
+            <label>Título<input name="title" required maxlength="200" placeholder="Ej. Python for Everybody"></label>
+            <label>Proveedor<input name="provider" placeholder="Coursera, Udemy, Google…"></label>
+            <label>Fuente
+              <select name="source">
+                <option value="coursera">Coursera</option>
+                <option value="udemy">Udemy</option>
+                <option value="telegram">Telegram</option>
+                <option value="google">Google</option>
+                <option value="otro">Otro</option>
+              </select>
+            </label>
+            <label>Enlace<input name="url" type="url" placeholder="https://"></label>
+            <label>Nivel<input name="level" placeholder="Básico, intermedio…"></label>
+            <label>Horas<input name="hours" type="number" min="0" step="0.5"></label>
+            <label class="span-2">Temas (separados por coma)<input name="topics" placeholder="python, sql, datos"></label>
 
-    <section id="tab-rutas" class="tab">
-      <header class="encabezado-pagina">
-        <span class="eyebrow">IA · Gemini</span>
-        <h1>Rutas de aprendizaje</h1>
-        <p class="ayuda">Genera una ruta con tu catálogo o evalúa una que ya tengas en mente.</p>
-      </header>
+            <div class="campo">
+              <span class="etiqueta">Precio</span>
+              <div class="seg" data-campo="price" data-default="desconocido">
+                <input type="hidden" name="price" value="desconocido">
+                <button type="button" data-valor="gratis" aria-pressed="false">Gratis</button>
+                <button type="button" data-valor="pago" aria-pressed="false">Pago</button>
+                <button type="button" data-valor="desconocido" aria-pressed="true">Desconocido</button>
+              </div>
+            </div>
+            <div class="campo">
+              <span class="etiqueta">Estado</span>
+              <div class="seg" data-campo="status" data-default="catalogo">
+                <input type="hidden" name="status" value="catalogo">
+                <button type="button" data-valor="catalogo" aria-pressed="true">Guardado</button>
+                <button type="button" data-valor="en_curso" aria-pressed="false">En curso</button>
+                <button type="button" data-valor="completado" aria-pressed="false">Completado</button>
+              </div>
+            </div>
+            <label>Avance (%)<input name="progress" type="number" min="0" max="100" value="0"></label>
 
-      <div class="dos-col">
-        <div class="columna">
-          <div class="card">
-            <h2>Generar una ruta</h2>
-            <p class="ayuda">Describe tu meta. La IA arma módulos usando solo cursos de tu catálogo.</p>
+            <div class="span-2 fila"><button type="submit">Guardar curso</button> <span id="msg-curso" class="msg" role="status"></span></div>
+          </form>
+        </dialog>
+      </section>
+
+      <section id="tab-perfil" class="tab">
+        <header class="encabezado-pagina">
+          <h1>Mi perfil</h1>
+          <p class="ayuda">Tus habilidades y preferencias ayudan a personalizar las rutas.</p>
+        </header>
+
+        <div class="perfil-grid">
+          <section class="card perfil-habilidades" aria-labelledby="habilidades-titulo">
+            <h2 id="habilidades-titulo"><span class="icono" aria-hidden="true">terminal</span> Habilidades registradas</h2>
+            <div id="lista-skills" class="lista"></div>
+            <h3>Agregar habilidad</h3>
+            <p class="ayuda">Elige un nivel del 1 (conoces el concepto) al 5 (experto).</p>
+            <form id="form-skill" class="fila">
+              <input name="name" placeholder="Ej. Python" required maxlength="60" aria-label="Habilidad">
+              <div class="seg" data-campo="level" data-default="3" role="group" aria-label="Nivel">
+                <input type="hidden" name="level" value="3">
+                <button type="button" data-valor="1" aria-pressed="false">1</button>
+                <button type="button" data-valor="2" aria-pressed="false">2</button>
+                <button type="button" data-valor="3" aria-pressed="true">3</button>
+                <button type="button" data-valor="4" aria-pressed="false">4</button>
+                <button type="button" data-valor="5" aria-pressed="false">5</button>
+              </div>
+              <button type="submit">Guardar</button>
+            </form>
+          </section>
+
+          <section class="card perfil-ajustes" aria-labelledby="ajustes-titulo">
+            <h2 id="ajustes-titulo"><span class="icono" aria-hidden="true">tune</span> Preferencias de aprendizaje</h2>
+            <form id="form-settings" class="form-grid">
+              <label>Horas por semana<input name="horas_semana" type="number" min="0" max="168" step="0.5"></label>
+              <label>Idioma de los cursos<input name="idioma" placeholder="es"></label>
+              <div class="campo span-2">
+                <span class="etiqueta">Presupuesto</span>
+                <div class="seg" data-campo="presupuesto" data-default="cualquiera">
+                  <input type="hidden" name="presupuesto" value="cualquiera">
+                  <button type="button" data-valor="cualquiera" aria-pressed="true">Cualquiera</button>
+                  <button type="button" data-valor="gratis" aria-pressed="false">Solo gratis</button>
+                  <button type="button" data-valor="pago" aria-pressed="false">Acepto pago</button>
+                </div>
+              </div>
+              <div class="span-2 fila"><button type="submit">Guardar preferencias</button> <span id="msg-settings" class="msg" role="status"></span></div>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <section id="tab-rutas" class="tab">
+        <header class="encabezado-pagina">
+          <h1>Rutas de aprendizaje con IA</h1>
+          <p class="ayuda">Genera una ruta con tu catálogo o evalúa una que ya tengas en mente.</p>
+        </header>
+
+        <div class="rutas-formularios">
+          <section class="card ruta-generar" aria-labelledby="generar-titulo">
+            <h2 id="generar-titulo"><span class="icono" aria-hidden="true">auto_awesome</span> Generar una ruta con IA</h2>
+            <p class="ayuda">Describe tu meta. La IA organiza los cursos de tu catálogo en módulos.</p>
             <form id="form-generar" class="fila-col">
-              <textarea name="objetivo" rows="2" placeholder="Ej. Quiero pasar de programar en Python a analizar datos de ventas" required minlength="3" maxlength="4000"></textarea>
+              <label>Objetivo
+                <textarea name="objetivo" rows="3" placeholder="Ej. Quiero aprender a analizar datos con Python" required minlength="3" maxlength="4000"></textarea>
+              </label>
               <button type="submit">Generar ruta</button>
             </form>
-          </div>
+          </section>
 
-          <div class="card">
-            <h2>Evaluar una ruta mía</h2>
-            <p class="ayuda">Pega la ruta que propones (temas o pasos). Te diré si encaja con tus habilidades.</p>
+          <section class="card ruta-evaluar" aria-labelledby="evaluar-titulo">
+            <h2 id="evaluar-titulo"><span class="icono" aria-hidden="true">fact_check</span> Evaluar una ruta existente</h2>
+            <p class="ayuda">Pega los temas o pasos. La evaluación los compara con tus habilidades.</p>
             <form id="form-evaluar" class="fila-col">
-              <textarea name="ruta" rows="3" placeholder="Ej. Git → Docker → Kubernetes → Terraform" required minlength="3" maxlength="4000"></textarea>
-              <button type="submit">Evaluar</button>
+              <label>Ruta propuesta
+                <textarea name="ruta" rows="3" placeholder="Ej. Git → Docker → Kubernetes" required minlength="3" maxlength="4000"></textarea>
+              </label>
+              <button type="submit" class="secundario">Evaluar ruta</button>
             </form>
-          </div>
+          </section>
+        </div>
 
-          <h2>Historial</h2>
+        <section class="ruta-salida" aria-label="Resultado de la ruta">
+          <p id="msg-ruta" class="msg" role="status"></p>
+          <div id="resultado-ruta"><p class="vacio">La ruta o evaluación aparecerá aquí.</p></div>
+        </section>
+
+        <section class="ruta-historial" aria-labelledby="historial-titulo">
+          <div class="grupo-encabezado"><h2 id="historial-titulo">Historial de rutas y evaluaciones</h2></div>
           <div id="historial" class="lista"></div>
-        </div>
-
-        <div class="columna">
-          <div id="msg-ruta" class="msg"></div>
-          <div id="resultado-ruta"><p class="vacio">Aquí aparecerá la ruta o la evaluación.</p></div>
-        </div>
-      </div>
-    </section>
-  </main>
+        </section>
+      </section>
+    </main>
+  </div>
 
   <script src="app.js" type="module"></script>
 </body>

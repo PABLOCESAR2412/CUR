@@ -8,8 +8,12 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? esc(u) : '#');
 const STATUS_LABEL = { catalogo: 'Guardado', en_curso: 'En curso', completado: 'Completado' };
 const PRICE_LABEL = { gratis: 'Gratis', pago: 'Pago', desconocido: 'Precio desconocido' };
 const SOURCE_LABEL = { coursera: 'Coursera', udemy: 'Udemy', telegram: 'Telegram', google: 'Google', otro: 'Otro' };
+const SOURCE_ICON = { coursera: 'school', udemy: 'play_lesson', telegram: 'forum', google: 'code' };
 const VERDICT_LABEL = { encaja: 'Encaja', encaja_parcialmente: 'Encaja parcialmente', no_encaja: 'No encaja' };
 const NIVEL_LABEL = { 1: 'Conoce el concepto', 2: 'Con ayuda', 3: 'Trabaja solo', 4: 'Sólido', 5: 'Experto' };
+
+const numero = new Intl.NumberFormat('es-EC', { maximumFractionDigits: 1 });
+const icono = (nombre) => `<span class="icono" aria-hidden="true">${esc(nombre)}</span>`;
 
 let cursosPorId = new Map();
 
@@ -49,7 +53,8 @@ async function api(method, path, body) {
 
 function setMsg(el, text, kind = '') {
   el.textContent = text;
-  el.className = `msg ${kind}`.trim();
+  el.classList.toggle('error', kind === 'error');
+  el.classList.toggle('ok', kind === 'ok');
 }
 
 const tituloDe = (id) => cursosPorId.get(Number(id))?.title ?? `Curso #${id}`;
@@ -77,32 +82,39 @@ function resetearSegmentos(form) {
 
 // ---------- Tarjeta de curso (avance y catálogo) ----------
 function cursoHtml(c) {
-  const detalles = [c.provider, c.hours ? `${c.hours} h` : null].filter(Boolean).map(esc).join(' · ');
-  const chips = [
-    `<span class="chip">${esc(SOURCE_LABEL[c.source] ?? c.source)}</span>`,
-    `<span class="chip${c.price === 'gratis' ? ' primario' : ''}">${esc(PRICE_LABEL[c.price])}</span>`,
-    ...c.topics.map((t) => `<span class="chip">${esc(t)}</span>`),
-  ].join('');
-  const estados = Object.entries(STATUS_LABEL).map(([v, l]) => `
-        <button type="button" data-action="estado" data-id="${c.id}" data-valor="${v}" aria-pressed="${v === c.status}">${l}</button>`).join('');
+  const proveedor = c.provider || SOURCE_LABEL[c.source] || c.source;
+  const horas = c.hours == null ? '' : `${numero.format(c.hours)} h`;
+  const detalles = [c.level, horas].filter(Boolean).map(esc).join(' · ');
+  const chips = c.topics.map((t) => `<span class="chip">${esc(t)}</span>`).join('');
+  const estados = Object.entries(STATUS_LABEL).map(([valor, etiqueta]) => `
+    <button type="button" data-action="estado" data-id="${c.id}" data-valor="${valor}" aria-pressed="${valor === c.status}">${etiqueta}</button>`).join('');
 
   return `
-  <article class="item">
-    <div class="item-head">
-      <div>
-        <span class="item-title">${esc(c.title)}</span>
-        ${detalles ? `<div class="meta">${detalles}</div>` : ''}
+  <article class="item item-curso" data-estado="${esc(c.status)}">
+    <div class="curso-portada">${icono(SOURCE_ICON[c.source] ?? 'menu_book')}</div>
+    <div class="curso-cuerpo">
+      <div class="item-head">
+        <div>
+          ${proveedor ? `<p class="meta">${esc(proveedor)}</p>` : ''}
+          <h3 class="item-title">${esc(c.title)}</h3>
+          ${detalles ? `<p class="meta">${detalles}</p>` : ''}
+        </div>
+        <span class="chip curso-estado">${esc(STATUS_LABEL[c.status])}</span>
       </div>
-      <span class="porcentaje">${c.progress}%</span>
-    </div>
-    <div class="chips">${chips}</div>
-    <div class="barra" role="progressbar" aria-label="Avance" aria-valuenow="${c.progress}" aria-valuemin="0" aria-valuemax="100"><span style="width:${c.progress}%"></span></div>
-    <div class="acciones">
-      <div class="seg" role="group" aria-label="Estado">${estados}
+      <div class="chips">
+        <span class="chip${c.price === 'gratis' ? ' primario' : ''}">${esc(PRICE_LABEL[c.price])}</span>
+        ${chips}
       </div>
-      ${c.status === 'en_curso' ? `<input type="range" min="0" max="100" step="5" value="${c.progress}" data-action="progreso" data-id="${c.id}" aria-label="Avance del curso">` : ''}
-      ${c.url ? `<a class="enlace" href="${safeUrl(c.url)}" target="_blank" rel="noopener">Abrir ↗</a>` : ''}
-      <button class="peligro" data-action="borrar" data-id="${c.id}">Eliminar</button>
+      <div class="curso-progreso">
+        <div class="progreso-cabecera"><span class="meta">Progreso</span><span class="porcentaje">${c.progress}%</span></div>
+        <div class="barra" role="progressbar" aria-label="Avance" aria-valuenow="${c.progress}" aria-valuemin="0" aria-valuemax="100"><span style="width:${c.progress}%"></span></div>
+      </div>
+      ${c.status === 'en_curso' ? `<input type="range" min="0" max="100" step="5" value="${c.progress}" data-action="progreso" data-id="${c.id}" aria-label="Modificar avance de ${esc(c.title)}">` : ''}
+      <div class="acciones">
+        <div class="seg" role="group" aria-label="Estado de ${esc(c.title)}">${estados}</div>
+        ${c.url ? `<a class="enlace" href="${safeUrl(c.url)}" target="_blank" rel="noopener">Abrir ${icono('open_in_new')}</a>` : ''}
+        <button type="button" class="peligro" data-action="borrar" data-id="${c.id}">Eliminar</button>
+      </div>
     </div>
   </article>`;
 }
@@ -110,11 +122,28 @@ function cursoHtml(c) {
 // ---------- Avance ----------
 async function cargarAvance() {
   const r = await api('GET', '/api/resumen');
+  const progresoMedio = r.en_curso.length
+    ? r.en_curso.reduce((total, curso) => total + curso.progress, 0) / r.en_curso.length
+    : null;
+  const cursosConHoras = r.completados.filter((curso) => curso.hours != null);
+  const horasCompletados = cursosConHoras.reduce((total, curso) => total + curso.hours, 0);
+
   $('#totales').innerHTML = [
-    ['Guardados', r.totales.catalogo],
-    ['En curso', r.totales.en_curso],
-    ['Completados', r.totales.completado],
-  ].map(([l, n]) => `<div class="total"><span>${l}</span><b>${n}</b></div>`).join('');
+    ['Cursos guardados', r.totales.catalogo, 'bookmark', ''],
+    ['En curso', r.totales.en_curso, 'play_circle', progresoMedio === null ? '' : `${numero.format(progresoMedio)}% de avance promedio`],
+    ['Completados', r.totales.completado, 'verified', cursosConHoras.length ? `${numero.format(horasCompletados)} h registradas en estos cursos` : ''],
+  ].map(([etiqueta, cantidad, simbolo, detalle]) => `
+    <div class="total">
+      <span class="total-titulo">${etiqueta}</span>
+      <span class="total-icono">${icono(simbolo)}</span>
+      <b>${cantidad}</b>
+      ${detalle ? `<span class="meta">${detalle}</span>` : ''}
+    </div>`).join('');
+
+  const conteoActivos = $('#conteo-activos');
+  const conteoCompletados = $('#conteo-completados');
+  if (conteoActivos) conteoActivos.textContent = `${r.totales.en_curso} ${r.totales.en_curso === 1 ? 'curso activo' : 'cursos activos'}`;
+  if (conteoCompletados) conteoCompletados.textContent = `${r.totales.completado} en total`;
   $('#en-curso').innerHTML = r.en_curso.length
     ? r.en_curso.map(cursoHtml).join('')
     : '<p class="vacio">No tienes cursos en curso. Agrega uno desde Catálogo.</p>';
@@ -133,22 +162,50 @@ async function cargarCatalogo() {
     : '<p class="vacio">Nada por aquí todavía.</p>';
 }
 
+const dialogCurso = $('#curso-dialog');
+const msgCurso = $('#msg-curso');
+const msgCatalogo = $('#msg-catalogo');
+const cerrarCurso = $('#cerrar-curso');
+
+$('#abrir-curso').addEventListener('click', () => {
+  setMsg(msgCurso, '');
+  setMsg(msgCatalogo, '');
+  dialogCurso.showModal();
+});
+
+cerrarCurso.addEventListener('click', () => dialogCurso.close());
+dialogCurso.addEventListener('cancel', (event) => {
+  if (cerrarCurso.disabled) event.preventDefault();
+});
+
 $('#form-curso').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
-  const msg = $('#msg-curso');
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit.disabled) return;
   const body = Object.fromEntries(new FormData(form).entries());
   for (const k of Object.keys(body)) if (body[k] === '') delete body[k];
   body.progress = body.status === 'completado' ? 100 : Number(body.progress || 0);
+  submit.disabled = true;
+  cerrarCurso.disabled = true;
+  setMsg(msgCurso, 'Guardando…');
   try {
     await api('POST', '/api/cursos', body);
-    form.reset();
-    resetearSegmentos(form);
-    setMsg(msg, 'Curso guardado', 'ok');
-    await cargarCatalogo();
   } catch (err) {
-    setMsg(msg, err.message, 'error');
+    setMsg(msgCurso, err.message, 'error');
+    return;
+  } finally {
+    submit.disabled = false;
+    cerrarCurso.disabled = false;
   }
+
+  form.reset();
+  resetearSegmentos(form);
+  dialogCurso.close();
+  setMsg(msgCatalogo, 'Curso guardado', 'ok');
+  cargarCatalogo().catch(() => {
+    setMsg(msgCatalogo, 'Curso guardado. No se pudo actualizar el catálogo.', 'error');
+  });
 });
 
 // ---------- Perfil ----------
@@ -156,10 +213,13 @@ function skillHtml(s) {
   const niveles = [1, 2, 3, 4, 5].map((n) => `
           <button type="button" data-action="nivel-skill" data-name="${esc(s.name)}" data-valor="${n}" aria-pressed="${n === s.level}">${n}</button>`).join('');
   return `
-      <div class="item">
+      <div class="item item-skill">
         <div class="item-head">
-          <span class="item-title">${esc(s.name)}</span>
-          <span class="meta">${NIVEL_LABEL[s.level] ?? ''}</span>
+          <div>
+            <h3 class="item-title">${esc(s.name)}</h3>
+            <p class="meta">${NIVEL_LABEL[s.level] ?? ''}</p>
+          </div>
+          <span class="chip">Nivel ${esc(s.level)}</span>
         </div>
         <div class="acciones">
           <div class="seg" role="group" aria-label="Nivel de ${esc(s.name)}">${niveles}
@@ -215,14 +275,17 @@ $('#form-settings').addEventListener('submit', async (e) => {
 function renderGenerar(r) {
   const modulos = r.modulos.map((m) => `
     <div class="modulo">
-      <div class="modulo-head">
-        <b>${m.orden}. ${esc(m.tema)}</b>
-        ${m.horas_estimadas ? `<span class="meta">${m.horas_estimadas} h</span>` : ''}
+      <span class="modulo-numero">${esc(m.orden)}</span>
+      <div class="modulo-cuerpo">
+        <div class="modulo-head">
+          <b>${esc(m.tema)}</b>
+          ${m.horas_estimadas ? `<span class="meta">${numero.format(m.horas_estimadas)} h</span>` : ''}
+        </div>
+        <p>${esc(m.objetivo)}</p>
+        <p class="meta">${m.course_id
+          ? `Curso: ${esc(tituloDe(m.course_id))}`
+          : `Sin curso en tu catálogo${m.recurso_sugerido ? `: ${esc(m.recurso_sugerido)}` : ''}`}</p>
       </div>
-      <p>${esc(m.objetivo)}</p>
-      <p class="meta">${m.course_id
-        ? `Curso: ${esc(tituloDe(m.course_id))}`
-        : `Sin curso en tu catálogo${m.recurso_sugerido ? `: ${esc(m.recurso_sugerido)}` : ''}`}</p>
     </div>`).join('');
   const omitidos = r.temas_omitidos.length
     ? `<h2>Temas omitidos</h2>${r.temas_omitidos.map((t) => `<p class="meta"><b>${esc(t.tema)}</b>: ${esc(t.motivo)}</p>`).join('')}`
@@ -292,10 +355,15 @@ async function cargarHistorial() {
   const [rutas] = await Promise.all([api('GET', '/api/rutas'), cargarCursosCache()]);
   $('#historial').innerHTML = rutas.length
     ? rutas.map((r) => `
-      <details class="item">
+      <details class="item item-historial">
         <summary class="item-head">
-          <span class="item-title">${esc(r.objetivo.length > 80 ? `${r.objetivo.slice(0, 80)}…` : r.objetivo)}</span>
-          <span class="chip">${r.tipo === 'generar' ? 'Generada' : 'Evaluada'} · ${esc(new Date(r.created_at).toLocaleDateString('es-EC'))}</span>
+          ${icono(r.tipo === 'generar' ? 'account_tree' : 'troubleshoot')}
+          <span class="historial-info">
+            <span class="item-title">${esc(r.resultado.titulo || r.objetivo)}</span>
+            <span class="meta">${esc(new Date(r.created_at).toLocaleDateString('es-EC'))}</span>
+          </span>
+          <span class="chip">${r.tipo === 'generar' ? 'Generada' : 'Evaluada'}</span>
+          ${icono('chevron_right')}
         </summary>
         ${(r.tipo === 'generar' ? renderGenerar : renderEvaluar)(r.resultado)}
       </details>`).join('')
@@ -314,7 +382,8 @@ function actualizarIconoTema() {
   const oscuro = temaEfectivo() === 'dark';
   const boton = $('#tema');
   const etiqueta = oscuro ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro';
-  boton.textContent = oscuro ? '☀' : '☾';
+  boton.querySelector('[data-tema-icono]').textContent = oscuro ? 'light_mode' : 'dark_mode';
+  $('#tema-texto').textContent = oscuro ? 'Modo claro' : 'Modo oscuro';
   boton.setAttribute('aria-label', etiqueta);
   boton.title = etiqueta;
 }
@@ -340,17 +409,22 @@ function alertar(err) {
 }
 
 function mostrar(tab) {
-  document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('button[data-tab]').forEach((boton) => {
+    const activo = boton.dataset.tab === tab;
+    boton.classList.toggle('active', activo);
+    if (activo) boton.setAttribute('aria-current', 'page');
+    else boton.removeAttribute('aria-current');
+  });
   document.querySelectorAll('.tab').forEach((s) => s.classList.toggle('active', s.id === `tab-${tab}`));
   loaders[tab]().catch(alertar);
 }
 
 async function refrescar() {
-  const tab = document.querySelector('nav button.active').dataset.tab;
+  const tab = document.querySelector('button[data-tab].active').dataset.tab;
   await loaders[tab]();
 }
 
-document.querySelector('nav').addEventListener('click', (e) => {
+document.querySelector('.nav-principal').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-tab]');
   if (btn) mostrar(btn.dataset.tab);
 });
