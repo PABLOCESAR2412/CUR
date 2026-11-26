@@ -3,22 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Cursos Hub</title>
+  <title>CUR</title>
+  <meta name="description" content="Sigue tus cursos de Coursera y Udemy, administra tu catálogo y genera rutas de aprendizaje con IA.">
+  <script>
+    // Aplica el tema guardado antes de pintar para evitar parpadeo. Sin preferencia, manda el sistema.
+    try {
+      var t = localStorage.getItem('cur-tema');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) { /* almacenamiento bloqueado: se usa el tema del sistema */ }
+  </script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="top">
-    <h1>Cursos Hub</h1>
-    <nav>
+    <div class="marca">
+      <span class="marca-icono" aria-hidden="true"></span>
+      <span class="marca-nombre">CUR</span>
+    </div>
+    <nav aria-label="Secciones">
       <button data-tab="dashboard" class="active">Avance</button>
       <button data-tab="catalogo">Catálogo</button>
       <button data-tab="perfil">Mi perfil</button>
       <button data-tab="rutas">Rutas</button>
     </nav>
+    <button id="tema" class="tema" type="button" aria-label="Cambiar tema"></button>
   </header>
 
   <main>
     <section id="tab-dashboard" class="tab active">
+      <header class="encabezado-pagina">
+        <span class="eyebrow">Progreso</span>
+        <h1>Tu avance</h1>
+        <p class="ayuda">Lo que estás cursando y lo que ya terminaste.</p>
+      </header>
       <div id="totales" class="totales"></div>
       <h2>En curso</h2>
       <div id="en-curso" class="lista"></div>
@@ -27,9 +44,15 @@
     </section>
 
     <section id="tab-catalogo" class="tab">
+      <header class="encabezado-pagina">
+        <span class="eyebrow">Biblioteca</span>
+        <h1>Catálogo</h1>
+        <p class="ayuda">Guarda cursos de cualquier fuente y actualiza su estado.</p>
+      </header>
+
       <form id="form-curso" class="card form-grid">
         <h2 class="span-2">Agregar curso</h2>
-        <label>Título<input name="title" required maxlength="200"></label>
+        <label>Título<input name="title" required maxlength="200" placeholder="Ej. Python for Everybody"></label>
         <label>Proveedor<input name="provider" placeholder="Coursera, Udemy, Google…"></label>
         <label>Fuente
           <select name="source">
@@ -43,52 +66,65 @@
         <label>Enlace<input name="url" type="url" placeholder="https://"></label>
         <label>Nivel<input name="level" placeholder="Básico, intermedio…"></label>
         <label>Horas<input name="hours" type="number" min="0" step="0.5"></label>
-        <label>Temas (separados por coma)<input name="topics" placeholder="python, sql, datos"></label>
-        <label>Precio
-          <select name="price">
-            <option value="desconocido">Desconocido</option>
-            <option value="gratis">Gratis</option>
-            <option value="pago">Pago</option>
-          </select>
-        </label>
-        <label>Estado
-          <select name="status">
-            <option value="catalogo">Solo guardado</option>
-            <option value="en_curso">En curso</option>
-            <option value="completado">Completado</option>
-          </select>
-        </label>
+        <label class="span-2">Temas (separados por coma)<input name="topics" placeholder="python, sql, datos"></label>
+
+        <div class="campo">
+          <span class="etiqueta">Precio</span>
+          <div class="seg" data-campo="price" data-default="desconocido">
+            <input type="hidden" name="price" value="desconocido">
+            <button type="button" data-valor="gratis" aria-pressed="false">Gratis</button>
+            <button type="button" data-valor="pago" aria-pressed="false">Pago</button>
+            <button type="button" data-valor="desconocido" aria-pressed="true">Desconocido</button>
+          </div>
+        </div>
+        <div class="campo">
+          <span class="etiqueta">Estado</span>
+          <div class="seg" data-campo="status" data-default="catalogo">
+            <input type="hidden" name="status" value="catalogo">
+            <button type="button" data-valor="catalogo" aria-pressed="true">Guardado</button>
+            <button type="button" data-valor="en_curso" aria-pressed="false">En curso</button>
+            <button type="button" data-valor="completado" aria-pressed="false">Completado</button>
+          </div>
+        </div>
         <label>Avance (%)<input name="progress" type="number" min="0" max="100" value="0"></label>
-        <div class="span-2"><button type="submit">Guardar curso</button> <span id="msg-curso" class="msg"></span></div>
+
+        <div class="span-2 fila"><button type="submit">Guardar curso</button> <span id="msg-curso" class="msg"></span></div>
       </form>
 
       <div class="filtros">
-        <label>Ver:
-          <select id="filtro-estado">
-            <option value="">Todos</option>
-            <option value="catalogo">Guardados</option>
-            <option value="en_curso">En curso</option>
-            <option value="completado">Completados</option>
-          </select>
-        </label>
+        <span class="etiqueta">Ver</span>
+        <div class="seg" id="filtro-estado" data-campo="filtro" data-default="">
+          <input type="hidden" value="">
+          <button type="button" data-valor="" aria-pressed="true">Todos</button>
+          <button type="button" data-valor="catalogo" aria-pressed="false">Guardados</button>
+          <button type="button" data-valor="en_curso" aria-pressed="false">En curso</button>
+          <button type="button" data-valor="completado" aria-pressed="false">Completados</button>
+        </div>
       </div>
       <div id="lista-catalogo" class="lista"></div>
     </section>
 
     <section id="tab-perfil" class="tab">
+      <header class="encabezado-pagina">
+        <span class="eyebrow">Perfil</span>
+        <h1>Mi perfil</h1>
+        <p class="ayuda">Tus habilidades y preferencias. Las rutas se calculan con esto.</p>
+      </header>
+
       <div class="card">
         <h2>Habilidades</h2>
-        <p class="ayuda">Registra cada habilidad con tu nivel real de 1 a 5. Las rutas se calculan con esto.</p>
+        <p class="ayuda">Registra cada habilidad con tu nivel real: 1 conoce el concepto · 2 con ayuda · 3 trabaja solo · 4 sólido · 5 experto.</p>
         <form id="form-skill" class="fila">
-          <input name="name" placeholder="Ej. Python" required maxlength="60">
-          <select name="level">
-            <option value="1">1 · Conozco el concepto</option>
-            <option value="2">2 · Con ayuda</option>
-            <option value="3">3 · Trabajo solo</option>
-            <option value="4">4 · Sólido</option>
-            <option value="5">5 · Experto</option>
-          </select>
-          <button type="submit">Agregar / actualizar</button>
+          <input name="name" placeholder="Ej. Python" required maxlength="60" aria-label="Habilidad">
+          <div class="seg" data-campo="level" data-default="3" role="group" aria-label="Nivel">
+            <input type="hidden" name="level" value="3">
+            <button type="button" data-valor="1" aria-pressed="false">1</button>
+            <button type="button" data-valor="2" aria-pressed="false">2</button>
+            <button type="button" data-valor="3" aria-pressed="true">3</button>
+            <button type="button" data-valor="4" aria-pressed="false">4</button>
+            <button type="button" data-valor="5" aria-pressed="false">5</button>
+          </div>
+          <button type="submit">Guardar</button>
         </form>
         <div id="lista-skills" class="lista"></div>
       </div>
@@ -98,42 +134,56 @@
         <form id="form-settings" class="form-grid">
           <label>Horas por semana<input name="horas_semana" type="number" min="0" max="168" step="0.5"></label>
           <label>Idioma de los cursos<input name="idioma" placeholder="es"></label>
-          <label>Presupuesto
-            <select name="presupuesto">
-              <option value="cualquiera">Cualquiera</option>
-              <option value="gratis">Solo gratis</option>
-              <option value="pago">Acepto pago</option>
-            </select>
-          </label>
-          <div class="span-2"><button type="submit">Guardar preferencias</button> <span id="msg-settings" class="msg"></span></div>
+          <div class="campo span-2">
+            <span class="etiqueta">Presupuesto</span>
+            <div class="seg" data-campo="presupuesto" data-default="cualquiera">
+              <input type="hidden" name="presupuesto" value="cualquiera">
+              <button type="button" data-valor="cualquiera" aria-pressed="true">Cualquiera</button>
+              <button type="button" data-valor="gratis" aria-pressed="false">Solo gratis</button>
+              <button type="button" data-valor="pago" aria-pressed="false">Acepto pago</button>
+            </div>
+          </div>
+          <div class="span-2 fila"><button type="submit">Guardar preferencias</button> <span id="msg-settings" class="msg"></span></div>
         </form>
       </div>
     </section>
 
     <section id="tab-rutas" class="tab">
-      <div class="card">
-        <h2>Generar una ruta</h2>
-        <p class="ayuda">Describe tu meta. La IA arma los módulos usando solo cursos de tu catálogo.</p>
-        <form id="form-generar" class="fila-col">
-          <textarea name="objetivo" rows="2" placeholder="Ej. Quiero pasar de programar en Python a analizar datos de ventas" required minlength="3"></textarea>
-          <button type="submit">Generar ruta</button>
-        </form>
+      <header class="encabezado-pagina">
+        <span class="eyebrow">IA · Gemini</span>
+        <h1>Rutas de aprendizaje</h1>
+        <p class="ayuda">Genera una ruta con tu catálogo o evalúa una que ya tengas en mente.</p>
+      </header>
+
+      <div class="dos-col">
+        <div class="columna">
+          <div class="card">
+            <h2>Generar una ruta</h2>
+            <p class="ayuda">Describe tu meta. La IA arma módulos usando solo cursos de tu catálogo.</p>
+            <form id="form-generar" class="fila-col">
+              <textarea name="objetivo" rows="2" placeholder="Ej. Quiero pasar de programar en Python a analizar datos de ventas" required minlength="3"></textarea>
+              <button type="submit">Generar ruta</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <h2>Evaluar una ruta mía</h2>
+            <p class="ayuda">Pega la ruta que propones (temas o pasos). Te diré si encaja con tus habilidades.</p>
+            <form id="form-evaluar" class="fila-col">
+              <textarea name="ruta" rows="3" placeholder="Ej. Git → Docker → Kubernetes → Terraform" required minlength="3"></textarea>
+              <button type="submit">Evaluar</button>
+            </form>
+          </div>
+
+          <h2>Historial</h2>
+          <div id="historial" class="lista"></div>
+        </div>
+
+        <div class="columna">
+          <div id="msg-ruta" class="msg"></div>
+          <div id="resultado-ruta"><p class="vacio">Aquí aparecerá la ruta o la evaluación.</p></div>
+        </div>
       </div>
-
-      <div class="card">
-        <h2>Evaluar una ruta mía</h2>
-        <p class="ayuda">Pega la ruta que propones (temas o pasos). Te diré si encaja con tus habilidades.</p>
-        <form id="form-evaluar" class="fila-col">
-          <textarea name="ruta" rows="3" placeholder="Ej. Git → Docker → Kubernetes → Terraform" required minlength="3"></textarea>
-          <button type="submit">Evaluar</button>
-        </form>
-      </div>
-
-      <div id="msg-ruta" class="msg"></div>
-      <div id="resultado-ruta"></div>
-
-      <h2>Historial</h2>
-      <div id="historial" class="lista"></div>
     </section>
   </main>
 

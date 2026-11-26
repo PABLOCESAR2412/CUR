@@ -7,7 +7,9 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? esc(u) : '#');
 
 const STATUS_LABEL = { catalogo: 'Guardado', en_curso: 'En curso', completado: 'Completado' };
 const PRICE_LABEL = { gratis: 'Gratis', pago: 'Pago', desconocido: 'Precio desconocido' };
+const SOURCE_LABEL = { coursera: 'Coursera', udemy: 'Udemy', telegram: 'Telegram', google: 'Google', otro: 'Otro' };
 const VERDICT_LABEL = { encaja: 'Encaja', encaja_parcialmente: 'Encaja parcialmente', no_encaja: 'No encaja' };
+const NIVEL_LABEL = { 1: 'Conoce el concepto', 2: 'Con ayuda', 3: 'Trabaja solo', 4: 'Sólido', 5: 'Experto' };
 
 let cursosPorId = new Map();
 
@@ -35,28 +37,51 @@ async function cargarCursosCache() {
   return cursos;
 }
 
-// ---------- Tarjeta de curso (usada en avance y catálogo) ----------
+// ---------- Controles segmentados ----------
+// Un contenedor .seg con un <input type="hidden"> guarda el valor elegido.
+function setSegmento(seg, valor) {
+  if (!seg) return;
+  const campo = seg.querySelector('input[type="hidden"]');
+  if (campo) campo.value = valor;
+  seg.querySelectorAll('button').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.valor === valor));
+  });
+}
+
+function resetearSegmentos(form) {
+  form.querySelectorAll('.seg[data-campo]').forEach((seg) => setSegmento(seg, seg.dataset.default ?? ''));
+}
+
+// ---------- Tarjeta de curso (avance y catálogo) ----------
 function cursoHtml(c) {
-  const meta = [c.provider, c.source, PRICE_LABEL[c.price], c.hours ? `${c.hours} h` : null]
-    .filter(Boolean).map(esc).join(' · ');
+  const detalles = [c.provider, c.hours ? `${c.hours} h` : null].filter(Boolean).map(esc).join(' · ');
+  const chips = [
+    `<span class="chip">${esc(SOURCE_LABEL[c.source] ?? c.source)}</span>`,
+    `<span class="chip${c.price === 'gratis' ? ' primario' : ''}">${esc(PRICE_LABEL[c.price])}</span>`,
+    ...c.topics.map((t) => `<span class="chip">${esc(t)}</span>`),
+  ].join('');
+  const estados = Object.entries(STATUS_LABEL).map(([v, l]) => `
+        <button type="button" data-action="estado" data-id="${c.id}" data-valor="${v}" aria-pressed="${v === c.status}">${l}</button>`).join('');
+
   return `
-  <div class="item">
+  <article class="item">
     <div class="item-head">
-      <span class="item-title">${esc(c.title)}</span>
-      <span class="meta">${meta}</span>
+      <div>
+        <span class="item-title">${esc(c.title)}</span>
+        ${detalles ? `<div class="meta">${detalles}</div>` : ''}
+      </div>
+      <span class="porcentaje">${c.progress}%</span>
     </div>
-    ${c.topics.length ? `<div class="meta">${c.topics.map((t) => esc(t)).join(' · ')}</div>` : ''}
-    <div class="barra" role="progressbar" aria-valuenow="${c.progress}" aria-valuemin="0" aria-valuemax="100"><span style="width:${c.progress}%"></span></div>
+    <div class="chips">${chips}</div>
+    <div class="barra" role="progressbar" aria-label="Avance" aria-valuenow="${c.progress}" aria-valuemin="0" aria-valuemax="100"><span style="width:${c.progress}%"></span></div>
     <div class="acciones">
-      <span class="meta">${c.progress}%</span>
-      <select data-action="estado" data-id="${c.id}" aria-label="Estado">
-        ${Object.entries(STATUS_LABEL).map(([v, l]) => `<option value="${v}" ${v === c.status ? 'selected' : ''}>${l}</option>`).join('')}
-      </select>
+      <div class="seg" role="group" aria-label="Estado">${estados}
+      </div>
       ${c.status === 'en_curso' ? `<input type="range" min="0" max="100" step="5" value="${c.progress}" data-action="progreso" data-id="${c.id}" aria-label="Avance del curso">` : ''}
-      ${c.url ? `<a class="meta" href="${safeUrl(c.url)}" target="_blank" rel="noopener">Abrir</a>` : ''}
+      ${c.url ? `<a class="enlace" href="${safeUrl(c.url)}" target="_blank" rel="noopener">Abrir ↗</a>` : ''}
       <button class="peligro" data-action="borrar" data-id="${c.id}">Eliminar</button>
     </div>
-  </div>`;
+  </article>`;
 }
 
 // ---------- Avance ----------
@@ -66,7 +91,7 @@ async function cargarAvance() {
     ['Guardados', r.totales.catalogo],
     ['En curso', r.totales.en_curso],
     ['Completados', r.totales.completado],
-  ].map(([l, n]) => `<div class="total"><b>${n}</b><span>${l}</span></div>`).join('');
+  ].map(([l, n]) => `<div class="total"><span>${l}</span><b>${n}</b></div>`).join('');
   $('#en-curso').innerHTML = r.en_curso.length
     ? r.en_curso.map(cursoHtml).join('')
     : '<p class="vacio">No tienes cursos en curso. Agrega uno desde Catálogo.</p>';
@@ -77,8 +102,8 @@ async function cargarAvance() {
 
 // ---------- Catálogo ----------
 async function cargarCatalogo() {
-  const estado = $('#filtro-estado').value;
-  const cursos = await api('GET', `/api/cursos${estado ? `?status=${estado}` : ''}`);
+  const estado = $('#filtro-estado input').value;
+  const cursos = await api('GET', `/api/cursos${estado ? `?status=${encodeURIComponent(estado)}` : ''}`);
   cursosPorId = new Map(cursos.map((c) => [c.id, c]));
   $('#lista-catalogo').innerHTML = cursos.length
     ? cursos.map(cursoHtml).join('')
@@ -87,13 +112,15 @@ async function cargarCatalogo() {
 
 $('#form-curso').addEventListener('submit', async (e) => {
   e.preventDefault();
+  const form = e.target;
   const msg = $('#msg-curso');
-  const body = Object.fromEntries(new FormData(e.target).entries());
-  if (body.hours === '') delete body.hours;
+  const body = Object.fromEntries(new FormData(form).entries());
+  for (const k of Object.keys(body)) if (body[k] === '') delete body[k];
   body.progress = body.status === 'completado' ? 100 : Number(body.progress || 0);
   try {
     await api('POST', '/api/cursos', body);
-    e.target.reset();
+    form.reset();
+    resetearSegmentos(form);
     setMsg(msg, 'Curso guardado', 'ok');
     await cargarCatalogo();
   } catch (err) {
@@ -101,36 +128,44 @@ $('#form-curso').addEventListener('submit', async (e) => {
   }
 });
 
-$('#filtro-estado').addEventListener('change', () => cargarCatalogo().catch(alertar));
-
 // ---------- Perfil ----------
+function skillHtml(s) {
+  const niveles = [1, 2, 3, 4, 5].map((n) => `
+          <button type="button" data-action="nivel-skill" data-name="${esc(s.name)}" data-valor="${n}" aria-pressed="${n === s.level}">${n}</button>`).join('');
+  return `
+      <div class="item">
+        <div class="item-head">
+          <span class="item-title">${esc(s.name)}</span>
+          <span class="meta">${NIVEL_LABEL[s.level] ?? ''}</span>
+        </div>
+        <div class="acciones">
+          <div class="seg" role="group" aria-label="Nivel de ${esc(s.name)}">${niveles}
+          </div>
+          <button class="peligro" data-action="borrar-skill" data-name="${esc(s.name)}">Quitar</button>
+        </div>
+      </div>`;
+}
+
 async function cargarPerfil() {
   const { skills, settings } = await api('GET', '/api/perfil');
   $('#lista-skills').innerHTML = skills.length
-    ? skills.map((s) => `
-      <div class="item">
-        <div class="item-head"><span class="item-title">${esc(s.name)}</span><span class="meta">nivel ${s.level}/5</span></div>
-        <div class="acciones">
-          <select data-action="nivel-skill" data-name="${esc(s.name)}" aria-label="Nivel de ${esc(s.name)}">
-            ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${n === s.level ? 'selected' : ''}>${n}</option>`).join('')}
-          </select>
-          <button class="peligro" data-action="borrar-skill" data-name="${esc(s.name)}">Quitar</button>
-        </div>
-      </div>`).join('')
+    ? skills.map(skillHtml).join('')
     : '<p class="vacio">Aún no registras habilidades.</p>';
 
   const f = $('#form-settings');
   f.horas_semana.value = settings.horas_semana ?? '';
   f.idioma.value = settings.idioma;
-  f.presupuesto.value = settings.presupuesto;
+  setSegmento(f.querySelector('[data-campo="presupuesto"]'), settings.presupuesto);
 }
 
 $('#form-skill').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const { name, level } = Object.fromEntries(new FormData(e.target).entries());
+  const form = e.target;
+  const { name, level } = Object.fromEntries(new FormData(form).entries());
   try {
     await api('PUT', `/api/perfil/skills/${encodeURIComponent(name.trim())}`, { level: Number(level) });
-    e.target.reset();
+    form.reset();
+    resetearSegmentos(form);
     await cargarPerfil();
   } catch (err) {
     alertar(err);
@@ -157,8 +192,10 @@ $('#form-settings').addEventListener('submit', async (e) => {
 function renderGenerar(r) {
   const modulos = r.modulos.map((m) => `
     <div class="modulo">
-      <b>${m.orden}. ${esc(m.tema)}</b>
-      <span class="meta">${m.horas_estimadas ? `${m.horas_estimadas} h` : ''}</span>
+      <div class="modulo-head">
+        <b>${m.orden}. ${esc(m.tema)}</b>
+        ${m.horas_estimadas ? `<span class="meta">${m.horas_estimadas} h</span>` : ''}
+      </div>
       <p>${esc(m.objetivo)}</p>
       <p class="meta">${m.course_id
         ? `Curso: ${esc(tituloDe(m.course_id))}`
@@ -180,7 +217,7 @@ function renderEvaluar(r) {
     ? `<h2>Brechas</h2>${r.brechas.map((b) => `
       <div class="modulo">
         <b>${esc(b.tema)}</b>
-        <span class="meta">requerido ${b.nivel_requerido ?? '?'} · tuyo ${b.nivel_actual ?? 'no registrado'}</span>
+        <p class="meta">requerido ${b.nivel_requerido ?? '?'} · tuyo ${b.nivel_actual ?? 'no registrado'}</p>
         <p>${esc(b.accion)}</p>
       </div>`).join('')}`
     : '';
@@ -191,8 +228,10 @@ function renderEvaluar(r) {
     ? `<h2>Cursos recomendados</h2>${r.cursos_recomendados.map((c) => `<p><b>${esc(tituloDe(c.course_id))}</b>: ${esc(c.razon)}</p>`).join('')}`
     : '';
   return `<div class="card">
-    <span class="veredicto ${r.veredicto}">${VERDICT_LABEL[r.veredicto]}</span>
-    <b> ${r.puntaje}/100</b>
+    <div class="veredicto-fila">
+      <span class="veredicto ${r.veredicto}">${VERDICT_LABEL[r.veredicto]}</span>
+      <span class="puntaje">${r.puntaje}<small>/100</small></span>
+    </div>
     <p>${esc(r.resumen)}</p>
     ${brechas}${orden}${recomendados}
   </div>`;
@@ -233,11 +272,41 @@ async function cargarHistorial() {
       <div class="item">
         <div class="item-head">
           <span class="item-title">${esc(r.objetivo.length > 80 ? `${r.objetivo.slice(0, 80)}…` : r.objetivo)}</span>
-          <span class="meta">${r.tipo === 'generar' ? 'Generada' : 'Evaluada'} · ${new Date(r.created_at).toLocaleDateString('es-EC')}</span>
+          <span class="chip">${r.tipo === 'generar' ? 'Generada' : 'Evaluada'} · ${esc(new Date(r.created_at).toLocaleDateString('es-EC'))}</span>
         </div>
       </div>`).join('')
     : '<p class="vacio">Todavía no generas ni evalúas rutas.</p>';
 }
+
+// ---------- Tema claro / oscuro ----------
+// El tema elegido se guarda en el navegador; sin elección, sigue al sistema.
+function temaEfectivo() {
+  const t = document.documentElement.dataset.theme;
+  if (t === 'light' || t === 'dark') return t;
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function actualizarIconoTema() {
+  const oscuro = temaEfectivo() === 'dark';
+  const boton = $('#tema');
+  const etiqueta = oscuro ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro';
+  boton.textContent = oscuro ? '☀' : '☾';
+  boton.setAttribute('aria-label', etiqueta);
+  boton.title = etiqueta;
+}
+
+$('#tema').addEventListener('click', () => {
+  const nuevo = temaEfectivo() === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = nuevo;
+  try {
+    localStorage.setItem('cur-tema', nuevo);
+  } catch {
+    /* sin almacenamiento: el cambio dura solo esta visita */
+  }
+  actualizarIconoTema();
+});
+
+window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', actualizarIconoTema);
 
 // ---------- Navegación y acciones ----------
 const loaders = { dashboard: cargarAvance, catalogo: cargarCatalogo, perfil: cargarPerfil, rutas: cargarHistorial };
@@ -263,17 +332,34 @@ document.querySelector('nav').addEventListener('click', (e) => {
 });
 
 document.addEventListener('click', async (e) => {
+  // Controles segmentados de formularios y del filtro del catálogo
+  const opcion = e.target.closest('.seg[data-campo] button');
+  if (opcion) {
+    const seg = opcion.parentElement;
+    setSegmento(seg, opcion.dataset.valor);
+    if (seg.id === 'filtro-estado') cargarCatalogo().catch(alertar);
+    return;
+  }
+
   const el = e.target.closest('[data-action]');
-  if (!el || el.tagName === 'SELECT' || el.type === 'range') return;
-  const { action, id, name } = el.dataset;
+  if (!el) return;
+  const { action, id, name, valor } = el.dataset;
+  if (el.getAttribute('aria-pressed') === 'true') return; // ya estaba seleccionado
+
   try {
-    if (action === 'borrar') {
+    if (action === 'estado') {
+      const patch = { status: valor };
+      if (valor === 'completado') patch.progress = 100;
+      await api('PATCH', `/api/cursos/${id}`, patch);
+    } else if (action === 'nivel-skill') {
+      await api('PUT', `/api/perfil/skills/${encodeURIComponent(name)}`, { level: Number(valor) });
+    } else if (action === 'borrar') {
       if (!confirm('¿Eliminar este curso?')) return;
       await api('DELETE', `/api/cursos/${id}`);
     } else if (action === 'borrar-skill') {
       await api('DELETE', `/api/perfil/skills/${encodeURIComponent(name)}`);
     } else {
-      return;
+      return; // p. ej. el control de avance: se maneja en "change"
     }
     await refrescar();
   } catch (err) {
@@ -283,23 +369,14 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('change', async (e) => {
   const el = e.target;
-  const { action, id, name } = el.dataset;
+  if (el.dataset.action !== 'progreso') return;
   try {
-    if (action === 'estado') {
-      const patch = { status: el.value };
-      if (el.value === 'completado') patch.progress = 100;
-      await api('PATCH', `/api/cursos/${id}`, patch);
-    } else if (action === 'progreso') {
-      await api('PATCH', `/api/cursos/${id}`, { progress: Number(el.value) });
-    } else if (action === 'nivel-skill') {
-      await api('PUT', `/api/perfil/skills/${encodeURIComponent(name)}`, { level: Number(el.value) });
-    } else {
-      return;
-    }
+    await api('PATCH', `/api/cursos/${el.dataset.id}`, { progress: Number(el.value) });
     await refrescar();
   } catch (err) {
     alertar(err);
   }
 });
 
+actualizarIconoTema();
 mostrar('dashboard');
