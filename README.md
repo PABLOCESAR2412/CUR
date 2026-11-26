@@ -44,7 +44,7 @@ npx wrangler secret put API_TOKEN
 npx wrangler deploy
 ```
 
-`GEMINI_API_KEY` habilita generar y evaluar rutas. Créala en [Google AI Studio](https://aistudio.google.com/apikey) y guárdala como secreto del Worker. El formulario de acceso de la web usa la clave independiente `API_TOKEN`. La API rechaza las solicitudes con 503 mientras falte `API_TOKEN` en el Worker. El modelo se define con `GEMINI_MODEL` en `wrangler.json` y usa `gemini-2.5-flash` por defecto.
+`GEMINI_API_KEY` habilita generar y evaluar rutas. Créala en [Google AI Studio](https://aistudio.google.com/apikey) y guárdala como secreto del Worker. El formulario de acceso de la web usa la clave independiente `API_TOKEN`. La API rechaza las solicitudes con 503 mientras falte `API_TOKEN` en el Worker. El modelo se define con `GEMINI_MODEL` en `wrangler.json` y usa `gemini-3.5-flash-lite` por defecto. El modelo tiene [nivel gratuito](https://aistudio.google.com/docs/pricing#gemini-3.5-flash-lite) en proyectos elegibles. Usa un proyecto que permanezca en ese nivel para evitar cargos.
 
 ## Importar cursos de Udemy
 

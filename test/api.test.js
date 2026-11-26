@@ -350,3 +350,19 @@ test('un cuerpo HTTP ilegible de Gemini devuelve un error que permite reintentar
   assert.equal(result.status, 502);
   assert.match((await result.json()).error, /Vuelve a intentarlo/);
 });
+
+test('Gemini Flash-Lite recibe una solicitud JSON sin parámetros obsoletos e ignora partes de pensamiento', async () => {
+  const client = createGemini({
+    apiKey: 'test-key',
+    model: 'gemini-3.5-flash-lite',
+    fetchImpl: async (url, init) => {
+      assert.match(url, /gemini-3\.5-flash-lite:generateContent$/);
+      assert.deepEqual(JSON.parse(init.body).generationConfig, { responseMimeType: 'application/json' });
+      return Response.json({ candidates: [{ content: { parts: [
+        { thought: true, text: 'Razonamiento interno' },
+        { text: '{"resultado":"ok"}' },
+      ] } }] });
+    },
+  });
+  assert.deepEqual(await client.generateJson({ system: 'Devuelve JSON', user: 'Prueba' }), { resultado: 'ok' });
+});

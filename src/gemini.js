@@ -18,7 +18,7 @@ export function createGemini({ apiKey, model, fetchImpl = fetch }) {
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: system }] },
           contents: [{ role: 'user', parts: [{ text: user }] }],
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.4 },
+          generationConfig: { responseMimeType: 'application/json' },
         }),
       });
       if (!res.ok) {
@@ -35,7 +35,7 @@ export function createGemini({ apiKey, model, fetchImpl = fetch }) {
         const data = await res.json();
         const parts = data?.candidates?.[0]?.content?.parts;
         const text = Array.isArray(parts)
-          ? parts.map((part) => typeof part?.text === 'string' ? part.text : '').join('')
+          ? parts.map((part) => !part?.thought && typeof part?.text === 'string' ? part.text : '').join('')
           : '';
         return JSON.parse(text);
       } catch {
