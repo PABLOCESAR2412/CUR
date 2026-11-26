@@ -1,5 +1,6 @@
 import { STATUSES, PRICES } from './db.js';
 import { compactCatalog, describePerfil, promptGenerar, promptEvaluar, validarGenerar, validarEvaluar } from './rutas.js';
+import { parseUdemyUrl } from './udemy.js';
 
 const MAX_BODY = 200_000;
 const MAX_RUTA_TEXT = 4_000;
@@ -95,7 +96,7 @@ async function handleRuta(kind, body, { db, gemini }) {
 }
 
 function knownPath(path) {
-  return ['/api/resumen', '/api/cursos', '/api/perfil', '/api/perfil/settings', '/api/rutas/generar', '/api/rutas/evaluar', '/api/rutas'].includes(path)
+  return ['/api/resumen', '/api/cursos', '/api/cursos/importar-udemy', '/api/perfil', '/api/perfil/settings', '/api/rutas/generar', '/api/rutas/evaluar', '/api/rutas'].includes(path)
     || /^\/api\/cursos\/\d+$/.test(path)
     || /^\/api\/perfil\/skills\/[^/]+$/.test(path);
 }
@@ -115,6 +116,18 @@ async function route(request, url, deps) {
       return [200, await db.listCourses({ status })];
     }
     if (m === 'POST') return [201, await db.createCourse(parseCourse(body))];
+  }
+
+  if (m === 'POST' && path === '/api/cursos/importar-udemy') {
+    const course = parseUdemyUrl(body?.url);
+    if (!course) throw new HttpError(400, 'Pega un enlace directo a un curso de Udemy.');
+    if (body.title !== undefined) {
+      if (typeof body.title !== 'string' || body.title.length > 200) throw new HttpError(400, 'Título inválido.');
+      course.title = body.title.trim() || course.title;
+    }
+    const result = await db.importUdemy(course, 'udemy');
+    if (!result.curso) throw new HttpError(409, 'El catálogo cambió durante la importación. Vuelve a intentarlo.');
+    return [result.creado ? 201 : 200, result];
   }
 
   const cursoMatch = path.match(/^\/api\/cursos\/(\d+)$/);

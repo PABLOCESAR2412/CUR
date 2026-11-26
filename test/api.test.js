@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createDb } from '../src/db.js';
 import { handleApi } from '../src/api.js';
 import { createGemini } from '../src/gemini.js';
+import worker from '../src/worker.js';
 import { sqliteD1 } from './helpers/d1-sqlite.js';
 
 let db;
@@ -61,6 +62,83 @@ test('rechaza datos inválidos de curso', async () => {
   assert.equal((await call('POST', '/api/cursos', { title: 'X', status: 'raro' })).status, 400);
   assert.equal((await call('POST', '/api/cursos', { title: 'X', progress: 150 })).status, 400);
   assert.equal((await call('POST', '/api/cursos', { title: 'X', price: 'caro' })).status, 400);
+});
+
+test('importa Udemy una vez, conserva el cupón y deja el precio sin verificar', async () => {
+  const path = '/api/cursos/importar-udemy';
+  const results = await Promise.all([
+    call('POST', path, { url: 'https://udemy.com/course/introduccion-a-udemy/?couponCode=CURSO-2026&utm_source=x#info' }),
+    call('POST', path, { url: 'https://www.udemy.com/course/introduccion-a-udemy' }),
+  ]);
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 201]);
+  const original = results.find((r) => r.status === 201).body;
+  assert.equal(original.creado, true);
+  assert.equal(original.curso.title, 'Introduccion a udemy');
+  assert.equal(original.curso.provider, 'Udemy');
+  assert.equal(original.curso.source, 'udemy');
+  assert.equal(original.curso.price, 'desconocido');
+  assert.equal(results[0].body.curso.id, results[1].body.curso.id);
+  assert.equal((await db.getCourse(original.curso.id)).url,
+    'https://www.udemy.com/course/introduccion-a-udemy/?couponCode=CURSO-2026');
+  assert.equal((await call('POST', path, { url: 'https://www.udemy.com.example.org/course/falso/' })).status, 400);
+  assert.equal((await call('POST', path, { url: 'https://www.udemy.com/course/falso/learn/' })).status, 400);
+  assert.equal((await call('POST', path, { url: 'http://udemy.com/course/falso/' })).status, 400);
+  assert.equal((await call('POST', path, null)).status, 400);
+});
+
+test('un cupón nuevo reutiliza una fila anterior y conserva el progreso', async () => {
+  const previous = await db.createCourse({
+    title: 'Título guardado', provider: 'Udemy', source: 'manual', status: 'en_curso',
+    url: 'https://udemy.com/course/curso-anterior/#intro', progress: 65, price: 'pago', notes: 'Notas guardadas',
+  });
+  const result = await call('POST', '/api/cursos/importar-udemy', {
+    url: 'https://www.udemy.com/course/curso-anterior?couponCode=OFERTA',
+    title: 'Opción nueva',
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.creado, false);
+  assert.deepEqual(result.body.curso, {
+    ...previous, updated_at: result.body.curso.updated_at,
+    url: 'https://www.udemy.com/course/curso-anterior/?couponCode=OFERTA',
+  });
+});
+
+test('el webhook de Telegram solo importa enlaces de chats autorizados con el secreto correcto', async () => {
+  const binding = sqliteD1(['migrations/0001_init.sql']);
+  const env = {
+    DB: binding,
+    TELEGRAM_WEBHOOK_SECRET: 'secret-test',
+    TELEGRAM_CHAT_IDS: '91, -1001234',
+  };
+  const dispatch = (update, secret = 'secret-test', config = env) => worker.fetch(
+    new Request('https://cur.test/telegram/webhook', {
+      method: 'POST', headers: { 'X-Telegram-Bot-Api-Secret-Token': secret },
+      body: JSON.stringify(update),
+    }),
+    config,
+  );
+  const update = {
+    channel_post: {
+      chat: { id: -1001234 },
+      caption: 'Curso https://www.udemy.com/course/curso-telegram/?couponCode=OFERTA). y otro',
+      caption_entities: [{ type: 'text_link', url: 'https://udemy.com/course/curso-oculto/' }],
+    },
+  };
+  const courses = createDb(binding);
+  assert.equal((await dispatch(update, 'secret-test', { ...env, TELEGRAM_CHAT_IDS: '' })).status, 404);
+  assert.equal((await dispatch(update, 'incorrecto')).status, 403);
+  assert.equal((await dispatch({ message: { ...update.channel_post, chat: { id: -10012345 } } })).status, 204);
+  assert.equal((await dispatch({ edited_channel_post: update.channel_post })).status, 204);
+  assert.deepEqual(await courses.listCourses(), []);
+
+  assert.equal((await dispatch(update)).status, 204);
+  assert.equal((await dispatch(update)).status, 204);
+  const saved = await courses.listCourses();
+  assert.deepEqual(saved.map(({ url }) => url).sort(), [
+    'https://www.udemy.com/course/curso-oculto/',
+    'https://www.udemy.com/course/curso-telegram/?couponCode=OFERTA',
+  ]);
+  assert.ok(saved.every(({ source, price }) => source === 'telegram' && price === 'desconocido'));
 });
 
 test('resumen separa cursos en curso y completados', async () => {
@@ -271,4 +349,20 @@ test('un cuerpo HTTP ilegible de Gemini devuelve un error que permite reintentar
   const result = await handleApi(req, { db, gemini: client });
   assert.equal(result.status, 502);
   assert.match((await result.json()).error, /Vuelve a intentarlo/);
+});
+
+test('Gemini Flash-Lite recibe una solicitud JSON sin parámetros obsoletos e ignora partes de pensamiento', async () => {
+  const client = createGemini({
+    apiKey: 'test-key',
+    model: 'gemini-3.5-flash-lite',
+    fetchImpl: async (url, init) => {
+      assert.match(url, /gemini-3\.5-flash-lite:generateContent$/);
+      assert.deepEqual(JSON.parse(init.body).generationConfig, { responseMimeType: 'application/json' });
+      return Response.json({ candidates: [{ content: { parts: [
+        { thought: true, text: 'Razonamiento interno' },
+        { text: '{"resultado":"ok"}' },
+      ] } }] });
+    },
+  });
+  assert.deepEqual(await client.generateJson({ system: 'Devuelve JSON', user: 'Prueba' }), { resultado: 'ok' });
 });

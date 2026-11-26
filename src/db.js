@@ -35,6 +35,37 @@ export function createDb(d1) {
       return getCourse(meta.last_row_id);
     },
 
+    async importUdemy({ slug, url, title, hasCoupon }, source) {
+      const t = now();
+      const canonical = `https://www.udemy.com/course/${slug}`;
+      const urls = [canonical, `https://udemy.com/course/${slug}`];
+      const existingId = `(
+        SELECT id FROM courses
+        WHERE lower(rtrim(substr(trim(url), 1,
+          min(instr(trim(url) || '?', '?'), instr(trim(url) || '#', '#')) - 1), '/')) IN (?, ?)
+        ORDER BY id LIMIT 1
+      )`;
+
+      // A single write checks existing rows and inserts atomically across concurrent imports.
+      const inserted = await q(`
+        INSERT INTO courses (title, provider, source, url, created_at, updated_at)
+        SELECT ?, 'Udemy', ?, ?, ?, ? WHERE ${existingId} IS NULL
+        RETURNING *
+      `, title, source, url, t, t, ...urls).first();
+      if (inserted) return { curso: parseCourse(inserted), creado: true };
+
+      if (hasCoupon) {
+        const updated = await q(`
+          UPDATE courses SET url = ?, updated_at = ?
+          WHERE id = ${existingId} AND url <> ?
+          RETURNING *
+        `, url, t, ...urls, url).first();
+        if (updated) return { curso: parseCourse(updated), creado: false };
+      }
+      const existing = await q(`SELECT * FROM courses WHERE id = ${existingId}`, ...urls).first();
+      return { curso: parseCourse(existing), creado: false };
+    },
+
     async updateCourse(id, patch) {
       const current = await getCourse(id);
       if (!current) return null;
