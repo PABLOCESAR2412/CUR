@@ -86,11 +86,15 @@ export function createDb(d1) {
       return out;
     },
 
-    async setSetting(key, value) {
-      await q(`
-        INSERT INTO settings (key, value) VALUES (?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-      `, key, String(value)).run();
+    async setSettings(settings) {
+      const statements = Object.entries(settings).map(([key, value]) => {
+        if (value === null) return q('DELETE FROM settings WHERE key = ?', key);
+        return q(`
+          INSERT INTO settings (key, value) VALUES (?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        `, key, String(value));
+      });
+      if (statements.length) await d1.batch(statements);
     },
 
     async saveRuta({ tipo, objetivo, resultado }) {

@@ -35,7 +35,7 @@ Reglas obligatorias:
 1. Usa SOLO los cursos del catálogo proporcionado y referencia cada uno por su "id". Nunca inventes cursos, URLs ni precios.
 2. Si ningún curso del catálogo cubre un tema, usa course_id null y describe en recurso_sugerido el tipo de recurso que buscaría.
 3. Respeta el nivel actual: no repitas temas dominados (nivel 4 o 5) y no saltes prerrequisitos.
-4. Si hay presupuesto "gratis", prioriza cursos con precio "gratis".
+4. Con presupuesto "gratis", usa exclusivamente cursos gratuitos y sugiere solo recursos gratuitos.
 5. Responde únicamente con JSON válido que cumpla el esquema pedido, sin texto adicional.`;
 
 export function promptGenerar({ objetivo, catalogo, perfil }) {
@@ -68,17 +68,30 @@ El puntaje va de 0 a 100.`,
 const VEREDICTOS = ['encaja', 'encaja_parcialmente', 'no_encaja'];
 const num = (v, fallback = null) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 const str = (v, fallback = '') => (typeof v === 'string' ? v.trim() : fallback);
-const arr = (v) => (Array.isArray(v) ? v : []);
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const isObjectList = (v) => Array.isArray(v) && v.every(isObject);
+const isOptionalObjectList = (v) => v === undefined || isObjectList(v);
+
+function invalidReply() {
+  return Object.assign(new Error('Gemini devolvió una respuesta incompleta o inválida. Vuelve a intentarlo.'), {
+    status: 502,
+  });
+}
 
 // Acepta el id como número o como texto, y solo devuelve ids que existan en el catálogo.
 function resolveCourseId(id, validIds) {
-  if (id === null || id === undefined || id === '') return null;
+  if (typeof id !== 'number' && (typeof id !== 'string' || !id.trim())) return null;
   const n = Number(id);
   return validIds.has(n) ? n : null;
 }
 
 export function validarGenerar(raw, validIds) {
-  const modulos = arr(raw.modulos)
+  if (!isObject(raw) || !isObjectList(raw.modulos) || !raw.modulos.length
+    || raw.modulos.some((modulo) => !str(modulo.tema)) || !isOptionalObjectList(raw.temas_omitidos)) {
+    throw invalidReply();
+  }
+
+  const modulos = raw.modulos
     .map((m, i) => {
       const course_id = resolveCourseId(m.course_id, validIds);
       return {
@@ -90,7 +103,6 @@ export function validarGenerar(raw, validIds) {
         recurso_sugerido: course_id === null ? str(m.recurso_sugerido) || null : null,
       };
     })
-    .filter((m) => m.tema)
     .sort((a, b) => a.orden - b.orden);
 
   return {
@@ -98,19 +110,25 @@ export function validarGenerar(raw, validIds) {
     resumen: str(raw.resumen),
     semanas_estimadas: num(raw.semanas_estimadas),
     modulos,
-    temas_omitidos: arr(raw.temas_omitidos)
+    temas_omitidos: (raw.temas_omitidos ?? [])
       .map((t) => ({ tema: str(t.tema), motivo: str(t.motivo) }))
       .filter((t) => t.tema),
   };
 }
 
 export function validarEvaluar(raw, validIds) {
+  if (!isObject(raw) || !str(raw.veredicto) || !Number.isFinite(raw.puntaje) || !str(raw.resumen)
+    || !isOptionalObjectList(raw.brechas) || !isOptionalObjectList(raw.cursos_recomendados)
+    || (raw.orden_sugerido !== undefined && !Array.isArray(raw.orden_sugerido))) {
+    throw invalidReply();
+  }
+
   const veredicto = VEREDICTOS.includes(raw.veredicto) ? raw.veredicto : 'encaja_parcialmente';
   return {
     veredicto,
     puntaje: Math.max(0, Math.min(100, num(raw.puntaje, 0))),
     resumen: str(raw.resumen),
-    brechas: arr(raw.brechas)
+    brechas: (raw.brechas ?? [])
       .map((b) => ({
         tema: str(b.tema),
         nivel_requerido: num(b.nivel_requerido),
@@ -118,8 +136,8 @@ export function validarEvaluar(raw, validIds) {
         accion: str(b.accion),
       }))
       .filter((b) => b.tema),
-    orden_sugerido: arr(raw.orden_sugerido).map((t) => str(t)).filter(Boolean),
-    cursos_recomendados: arr(raw.cursos_recomendados)
+    orden_sugerido: (raw.orden_sugerido ?? []).map((t) => str(t)).filter(Boolean),
+    cursos_recomendados: (raw.cursos_recomendados ?? [])
       .map((c) => ({ course_id: resolveCourseId(c.course_id, validIds), razon: str(c.razon) }))
       .filter((c) => c.course_id !== null),
   };

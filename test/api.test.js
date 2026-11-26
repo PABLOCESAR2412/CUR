@@ -2,16 +2,21 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDb } from '../src/db.js';
 import { handleApi } from '../src/api.js';
+import { createGemini } from '../src/gemini.js';
 import { sqliteD1 } from './helpers/d1-sqlite.js';
 
 let db;
 let fakeReply = null;
 let geminiEnabled = true;
+let lastPrompt;
 
 const gemini = () => ({
   model: 'test-model',
   get enabled() { return geminiEnabled; },
-  async generateJson() { return fakeReply; },
+  async generateJson(prompt) {
+    lastPrompt = prompt;
+    return fakeReply;
+  },
 });
 
 before(() => {
@@ -79,7 +84,7 @@ test('skills y ajustes del perfil', async () => {
 });
 
 test('generar ruta descarta ids inventados y acepta ids en texto', async () => {
-  const curso = (await call('POST', '/api/cursos', { title: 'SQL básico', topics: ['sql'] })).body;
+  const curso = (await call('POST', '/api/cursos', { title: 'SQL básico', topics: ['sql'], price: 'gratis' })).body;
   fakeReply = {
     titulo: 'Ruta de datos',
     resumen: 'Resumen',
@@ -169,4 +174,101 @@ test('API_TOKEN exige autorización Bearer cuando está configurado', async () =
     headers: { Authorization: 'Bearer secreto' },
   }), { db, gemini: gemini(), apiToken: 'secreto' });
   assert.equal(authorized.status, 200);
+});
+
+test('el presupuesto solo gratis restringe los candidatos y las referencias de ambas rutas', async () => {
+  const curso = async (title, price) => (await call('POST', '/api/cursos', { title, price })).body.id;
+  const free = await curso('Curso gratuito', 'gratis');
+  const paid = await curso('Curso de pago', 'pago');
+  const unknown = await curso('Curso de precio desconocido', 'desconocido');
+  const ids = [free, paid, unknown];
+  const catalog = () => JSON.parse(lastPrompt.user.split('\n\nCatálogo disponible (JSON):\n').at(-1));
+
+  await call('PUT', '/api/perfil/settings', { presupuesto: 'gratis' });
+  fakeReply = { modulos: ids.map((id) => ({ tema: 'Tema', course_id: id })) };
+  const generated = await call('POST', '/api/rutas/generar', { objetivo: 'Aprender SQL' });
+  assert.equal(generated.status, 200);
+  assert.deepEqual(generated.body.modulos.map((m) => m.course_id), [free, null, null]);
+  assert.ok(catalog().some((c) => c.id === free));
+  assert.ok(catalog().every((c) => c.precio === 'gratis'));
+
+  fakeReply = {
+    veredicto: 'encaja', puntaje: 90, resumen: 'Adecuada',
+    cursos_recomendados: ids.map((id) => ({ course_id: id })),
+  };
+  const evaluated = await call('POST', '/api/rutas/evaluar', { ruta: 'Ruta de SQL' });
+  assert.equal(evaluated.status, 200);
+  assert.deepEqual(evaluated.body.cursos_recomendados.map((c) => c.course_id), [free]);
+  assert.ok(catalog().every((c) => c.precio === 'gratis'));
+
+  await call('PUT', '/api/perfil/settings', { presupuesto: 'pago' });
+  const unrestricted = await call('POST', '/api/rutas/evaluar', { ruta: 'Ruta de SQL' });
+  assert.deepEqual(unrestricted.body.cursos_recomendados.map((c) => c.course_id), ids);
+});
+
+test('valida todas las preferencias antes de guardar y permite borrar las horas', async () => {
+  const baseline = await call('PUT', '/api/perfil/settings', { horas_semana: 6, idioma: 'es', presupuesto: 'gratis' });
+  assert.equal(baseline.status, 200);
+
+  const rejected = await call('PUT', '/api/perfil/settings', { horas_semana: 12, idioma: 'en', presupuesto: 'inválido' });
+  assert.equal(rejected.status, 400);
+  assert.deepEqual((await call('GET', '/api/perfil')).body.settings, baseline.body);
+
+  assert.equal((await call('PUT', '/api/perfil/settings', { horas_semana: 0 })).body.horas_semana, '0');
+  assert.equal((await call('PUT', '/api/perfil/settings', { idioma: 'en' })).body.horas_semana, '0');
+
+  const cleared = await call('PUT', '/api/perfil/settings', { horas_semana: '', idioma: 'fr' });
+  assert.equal(cleared.status, 200);
+  assert.deepEqual(cleared.body, { horas_semana: null, idioma: 'fr', presupuesto: 'gratis' });
+  assert.deepEqual((await call('GET', '/api/perfil')).body.settings, cleared.body);
+});
+
+test('si falla una escritura de preferencias se revierte el lote completo', async () => {
+  const binding = sqliteD1(['migrations/0001_init.sql']);
+  const profileDb = createDb(binding);
+  await profileDb.setSettings({ horas_semana: 6 });
+  await binding.prepare(`
+    CREATE TRIGGER reject_language BEFORE INSERT ON settings
+    WHEN NEW.key = 'idioma' BEGIN
+      SELECT RAISE(ABORT, 'idioma rechazado');
+    END
+  `).run();
+
+  await assert.rejects(profileDb.setSettings({ horas_semana: null, idioma: 'en' }), /idioma rechazado/);
+  assert.deepEqual(await profileDb.getSettings(), { horas_semana: '6', idioma: 'es', presupuesto: 'cualquiera' });
+});
+
+test('las respuestas de Gemini incompletas o mal formadas no se guardan', async () => {
+  const history = (await call('GET', '/api/rutas')).body;
+  const cases = [
+    ['generar', { objetivo: 'Aprender SQL' }, null],
+    ['generar', { objetivo: 'Aprender SQL' }, {}],
+    ['generar', { objetivo: 'Aprender SQL' }, { modulos: [] }],
+    ['generar', { objetivo: 'Aprender SQL' }, { modulos: [null] }],
+    ['evaluar', { ruta: 'Ruta de SQL' }, { veredicto: 'encaja' }],
+    ['evaluar', { ruta: 'Ruta de SQL' }, { veredicto: 'encaja', puntaje: 95, resumen: 'Adecuada', brechas: [null] }],
+  ];
+
+  for (const [action, body, reply] of cases) {
+    fakeReply = reply;
+    const result = await call('POST', `/api/rutas/${action}`, body);
+    assert.equal(result.status, 502);
+    assert.match(result.body.error, /Vuelve a intentarlo/);
+  }
+  assert.deepEqual((await call('GET', '/api/rutas')).body, history);
+});
+
+test('un cuerpo HTTP ilegible de Gemini devuelve un error que permite reintentar', async () => {
+  const client = createGemini({
+    apiKey: 'test-key',
+    model: 'test-model',
+    fetchImpl: async () => new Response('cuerpo inválido'),
+  });
+  const req = new Request('http://test/api/rutas/generar', {
+    method: 'POST',
+    body: JSON.stringify({ objetivo: 'Aprender SQL' }),
+  });
+  const result = await handleApi(req, { db, gemini: client });
+  assert.equal(result.status, 502);
+  assert.match((await result.json()).error, /Vuelve a intentarlo/);
 });
