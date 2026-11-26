@@ -17,39 +17,85 @@ const icono = (nombre) => `<span class="icono" aria-hidden="true">${esc(nombre)}
 
 let cursosPorId = new Map();
 
-async function api(method, path, body) {
-  let token = '';
-  try {
-    token = localStorage.getItem('cur-api-token') ?? '';
-  } catch {
-    token = '';
+
+const acceso = $('#acceso');
+const formAcceso = $('#form-acceso');
+let apiToken = '';
+try { apiToken = localStorage.getItem('cur-api-token') ?? ''; } catch {}
+
+function mostrarAcceso(mensaje, sinConfigurar = false) {
+  if (acceso.hidden) {
+    $('#curso-dialog').close();
+    $('#udemy-dialog').close();
   }
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const headers = body ? { 'Content-Type': 'application/json' } : {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(path, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const data = await res.json().catch(() => ({}));
-
-    if (res.status === 401 && attempt === 0) {
-      token = window.prompt('Token de acceso para CUR:')?.trim() ?? '';
-      if (!token) throw new Error(data.error ?? 'Token de acceso requerido');
-      try {
-        localStorage.setItem('cur-api-token', token);
-      } catch {}
-      continue;
-    }
-
-    if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
-    return data;
-  }
-
-  throw new Error('No se pudo completar la solicitud');
+  acceso.hidden = false;
+  acceso.parentElement.classList.add('acceso-requerido');
+  formAcceso.hidden = sinConfigurar;
+  $('#reintentar-acceso').hidden = !sinConfigurar;
+  $('#ayuda-acceso').hidden = sinConfigurar;
+  setMsg($('#msg-acceso'), mensaje, 'error');
 }
+
+function cerrarAcceso() {
+  acceso.hidden = true;
+  acceso.parentElement.classList.remove('acceso-requerido');
+}
+
+async function api(method, path, body, comprobandoToken) {
+  const token = comprobandoToken ?? apiToken;
+  const headers = body ? { 'Content-Type': 'application/json' } : {};
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const data = await res.json().catch(() => ({}));
+
+  if (res.status === 401) {
+    const mensaje = token ? 'La clave de acceso es incorrecta o cambió.' : 'Ingresa tu clave de acceso a CUR.';
+    if (comprobandoToken === undefined && token === apiToken) {
+      apiToken = '';
+      try { localStorage.removeItem('cur-api-token'); } catch {}
+      mostrarAcceso(token ? mensaje : '');
+    }
+    throw new Error(mensaje);
+  }
+
+  if (res.status === 503 && data.code === 'CUR_API_TOKEN_MISSING') {
+    mostrarAcceso('Falta configurar API_TOKEN en los secretos de este Worker de Cloudflare.', true);
+  }
+  if (!res.ok) throw new Error(data.error ?? 'Error ' + res.status);
+  return data;
+}
+
+formAcceso.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const boton = formAcceso.querySelector('button');
+  const nuevoToken = formAcceso.elements.token.value.trim();
+  if (!nuevoToken || boton.disabled) return;
+  boton.disabled = true;
+  setMsg($('#msg-acceso'), 'Validando…');
+  try {
+    await api('GET', '/api/resumen', undefined, nuevoToken);
+    apiToken = nuevoToken;
+    let guardado = false;
+    try {
+      localStorage.setItem('cur-api-token', apiToken);
+      guardado = true;
+    } catch {}
+    formAcceso.reset();
+    cerrarAcceso();
+    await refrescar();
+    if (!guardado) setMsg($('#msg-carga'), 'El navegador solo permite conservar la clave con esta pestaña abierta.');
+  } catch (err) {
+    if (acceso.hidden) avisarCarga(err);
+    else if (!formAcceso.hidden) setMsg($('#msg-acceso'), err.message, 'error');
+  } finally {
+    boton.disabled = false;
+  }
+});
+
+$('#reintentar-acceso').addEventListener('click', async () => {
+  cerrarAcceso();
+  await refrescar().catch(avisarCarga);
+});
 
 function setMsg(el, text, kind = '') {
   el.textContent = text;
@@ -103,6 +149,7 @@ function cursoHtml(c) {
       </div>
       <div class="chips">
         <span class="chip${c.price === 'gratis' ? ' primario' : ''}">${esc(PRICE_LABEL[c.price])}</span>
+        ${c.source === 'telegram' ? '<span class="chip">Telegram</span>' : ''}
         ${chips}
       </div>
       <div class="curso-progreso">
@@ -113,6 +160,7 @@ function cursoHtml(c) {
       <div class="acciones">
         <div class="seg" role="group" aria-label="Estado de ${esc(c.title)}">${estados}</div>
         ${c.url ? `<a class="enlace" href="${safeUrl(c.url)}" target="_blank" rel="noopener">Abrir ${icono('open_in_new')}</a>` : ''}
+        <button type="button" class="secundario" data-action="editar" data-id="${c.id}">Editar</button>
         <button type="button" class="peligro" data-action="borrar" data-id="${c.id}">Eliminar</button>
       </div>
     </div>
@@ -122,6 +170,7 @@ function cursoHtml(c) {
 // ---------- Avance ----------
 async function cargarAvance() {
   const r = await api('GET', '/api/resumen');
+  cursosPorId = new Map([...r.en_curso, ...r.completados].map((c) => [c.id, c]));
   const progresoMedio = r.en_curso.length
     ? r.en_curso.reduce((total, curso) => total + curso.progress, 0) / r.en_curso.length
     : null;
@@ -167,30 +216,51 @@ const msgCurso = $('#msg-curso');
 const msgCatalogo = $('#msg-catalogo');
 const cerrarCurso = $('#cerrar-curso');
 
-$('#abrir-curso').addEventListener('click', () => {
+const formCurso = $('#form-curso');
+let cursoEditado = null;
+
+function abrirCurso(curso = null) {
+  cursoEditado = curso;
+  formCurso.reset();
+  resetearSegmentos(formCurso);
+  $('#curso-dialog-titulo').textContent = curso ? 'Editar curso' : 'Agregar curso';
+  if (curso) {
+    for (const campo of ['title', 'provider', 'source', 'url', 'level', 'hours', 'progress']) {
+      formCurso.elements[campo].value = curso[campo] ?? '';
+    }
+    formCurso.elements.topics.value = curso.topics.join(', ');
+    for (const campo of ['price', 'status']) {
+      setSegmento(formCurso.querySelector('[data-campo="' + campo + '"]'), curso[campo]);
+    }
+  }
   setMsg(msgCurso, '');
   setMsg(msgCatalogo, '');
   dialogCurso.showModal();
-});
+}
+
+$('#abrir-curso').addEventListener('click', () => abrirCurso());
 
 cerrarCurso.addEventListener('click', () => dialogCurso.close());
 dialogCurso.addEventListener('cancel', (event) => {
   if (cerrarCurso.disabled) event.preventDefault();
 });
 
-$('#form-curso').addEventListener('submit', async (e) => {
+formCurso.addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
   const submit = form.querySelector('button[type="submit"]');
   if (submit.disabled) return;
   const body = Object.fromEntries(new FormData(form).entries());
-  for (const k of Object.keys(body)) if (body[k] === '') delete body[k];
+  if (!cursoEditado) {
+    for (const k of Object.keys(body)) if (body[k] === '') delete body[k];
+  }
   body.progress = body.status === 'completado' ? 100 : Number(body.progress || 0);
   submit.disabled = true;
   cerrarCurso.disabled = true;
   setMsg(msgCurso, 'Guardando…');
   try {
-    await api('POST', '/api/cursos', body);
+    if (cursoEditado) await api('PATCH', '/api/cursos/' + cursoEditado.id, body);
+    else await api('POST', '/api/cursos', body);
   } catch (err) {
     setMsg(msgCurso, err.message, 'error');
     return;
@@ -203,9 +273,38 @@ $('#form-curso').addEventListener('submit', async (e) => {
   resetearSegmentos(form);
   dialogCurso.close();
   setMsg(msgCatalogo, 'Curso guardado', 'ok');
-  cargarCatalogo().catch(() => {
-    setMsg(msgCatalogo, 'Curso guardado. No se pudo actualizar el catálogo.', 'error');
-  });
+  refrescar().catch(avisarCarga);
+});
+
+const udemyDialog = $('#udemy-dialog');
+const udemyForm = $('#form-udemy');
+const cerrarUdemy = $('#cerrar-udemy');
+$('#abrir-udemy').addEventListener('click', () => {
+  udemyForm.reset();
+  setMsg($('#msg-udemy'), '');
+  udemyDialog.showModal();
+});
+cerrarUdemy.addEventListener('click', () => udemyDialog.close());
+udemyDialog.addEventListener('cancel', (e) => {
+  if (cerrarUdemy.disabled) e.preventDefault();
+});
+udemyForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const boton = udemyForm.querySelector('button[type="submit"]');
+  if (boton.disabled) return;
+  boton.disabled = cerrarUdemy.disabled = true;
+  setMsg($('#msg-udemy'), 'Importando…');
+  try {
+    const { creado } = await api('POST', '/api/cursos/importar-udemy', Object.fromEntries(new FormData(udemyForm)));
+    udemyDialog.close();
+    setSegmento($('#filtro-estado'), '');
+    setMsg(msgCatalogo, creado ? 'Curso guardado. Verifica el precio en Udemy.' : 'El curso ya está en tu catálogo.', 'ok');
+    await cargarCatalogo().catch(avisarCarga);
+  } catch (err) {
+    setMsg($('#msg-udemy'), err.message, 'error');
+  } finally {
+    boton.disabled = cerrarUdemy.disabled = false;
+  }
 });
 
 // ---------- Perfil ----------
@@ -251,7 +350,7 @@ $('#form-skill').addEventListener('submit', async (e) => {
     resetearSegmentos(form);
     await cargarPerfil();
   } catch (err) {
-    alertar(err);
+    avisarCarga(err);
   }
 });
 
@@ -404,8 +503,8 @@ window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change',
 // ---------- Navegación y acciones ----------
 const loaders = { dashboard: cargarAvance, catalogo: cargarCatalogo, perfil: cargarPerfil, rutas: cargarHistorial };
 
-function alertar(err) {
-  alert(err?.message ?? String(err));
+function avisarCarga(err) {
+  if (acceso.hidden) setMsg($('#msg-carga'), err.message, 'error');
 }
 
 function mostrar(tab) {
@@ -416,7 +515,8 @@ function mostrar(tab) {
     else boton.removeAttribute('aria-current');
   });
   document.querySelectorAll('.tab').forEach((s) => s.classList.toggle('active', s.id === `tab-${tab}`));
-  loaders[tab]().catch(alertar);
+  setMsg($('#msg-carga'), '');
+  if (acceso.hidden) loaders[tab]().catch(avisarCarga);
 }
 
 async function refrescar() {
@@ -435,7 +535,7 @@ document.addEventListener('click', async (e) => {
   if (opcion) {
     const seg = opcion.parentElement;
     setSegmento(seg, opcion.dataset.valor);
-    if (seg.id === 'filtro-estado') cargarCatalogo().catch(alertar);
+    if (seg.id === 'filtro-estado') cargarCatalogo().catch(avisarCarga);
     return;
   }
 
@@ -443,6 +543,12 @@ document.addEventListener('click', async (e) => {
   if (!el) return;
   const { action, id, name, valor } = el.dataset;
   if (el.getAttribute('aria-pressed') === 'true') return; // ya estaba seleccionado
+
+  if (action === 'editar') {
+    const curso = cursosPorId.get(Number(id));
+    if (curso) abrirCurso(curso);
+    return;
+  }
 
   try {
     if (action === 'estado') {
@@ -461,7 +567,7 @@ document.addEventListener('click', async (e) => {
     }
     await refrescar();
   } catch (err) {
-    alertar(err);
+    avisarCarga(err);
   }
 });
 
@@ -472,7 +578,7 @@ document.addEventListener('change', async (e) => {
     await api('PATCH', `/api/cursos/${el.dataset.id}`, { progress: Number(el.value) });
     await refrescar();
   } catch (err) {
-    alertar(err);
+    avisarCarga(err);
   }
 });
 

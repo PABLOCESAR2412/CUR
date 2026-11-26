@@ -22,9 +22,13 @@ export function createGemini({ apiKey, model, fetchImpl = fetch }) {
         }),
       });
       if (!res.ok) {
-        const detail = await res.text();
-        const err = new Error(`Gemini respondió ${res.status}: ${detail.slice(0, 300)}`);
-        err.status = 502;
+        const message = res.status === 400 || res.status === 401 || res.status === 403
+          ? 'Gemini rechazó la solicitud. Revisa la clave GEMINI_API_KEY y el modelo configurado.'
+          : res.status === 429
+            ? 'Gemini alcanzó el límite de solicitudes. Vuelve a intentarlo más tarde.'
+            : 'Gemini no pudo responder. Vuelve a intentarlo.';
+        const err = new Error(message);
+        err.status = res.status === 429 ? 429 : 502;
         throw err;
       }
       try {

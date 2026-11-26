@@ -487,6 +487,10 @@ textarea { resize: vertical; min-height: 6rem; }
 .msg.error { color: var(--bad); }
 .msg.ok { color: var(--success); }
 .msg:empty { display: none; }
+.acceso { max-width: 30rem; margin-inline: auto; }
+.acceso [hidden], .acceso-requerido .tab { display: none; }
+.acceso .msg { margin-top: 0.75rem; }
+#msg-carga:not(:empty) { margin-bottom: 1rem; }
 
 /* Catalog */
 .catalogo-toolbar {
@@ -515,7 +519,7 @@ textarea { resize: vertical; min-height: 6rem; }
   box-shadow: 0 1rem 2.5rem rgb(8 13 30 / 20%);
 }
 .curso-dialog::backdrop { background: rgb(7 13 25 / 58%); }
-.curso-dialog #form-curso { padding: 1rem 1.2rem 1.2rem; }
+.curso-dialog form { padding: 1rem 1.2rem 1.2rem; }
 .dialog-encabezado {
   display: flex;
   align-items: center;
@@ -525,7 +529,7 @@ textarea { resize: vertical; min-height: 6rem; }
   padding: 0.75rem 1.2rem;
 }
 .dialog-encabezado h2 { margin-bottom: 0; }
-#cerrar-curso { min-width: 2rem; min-height: 2rem; padding: 0.3rem; }
+.dialog-encabezado .icono-boton { min-width: 2rem; min-height: 2rem; padding: 0.3rem; }
 
 /* Profile */
 .perfil-grid {

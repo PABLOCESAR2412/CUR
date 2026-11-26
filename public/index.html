@@ -12,6 +12,11 @@
       if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
     } catch (e) { /* almacenamiento bloqueado: se usa el tema del sistema */ }
   </script>
+  <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+  <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="manifest" href="/site.webmanifest">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -38,6 +43,17 @@
 
   <div class="workspace">
     <main>
+      <p id="msg-carga" class="msg" role="status"></p>
+      <section id="acceso" class="card acceso" aria-labelledby="titulo-acceso" hidden>
+        <h1 id="titulo-acceso">Acceso a CUR</h1>
+        <p id="ayuda-acceso" class="ayuda">Ingresa la clave de acceso de CUR. Se recuerda en este navegador después de validarla.</p>
+        <form id="form-acceso" class="fila-col">
+          <label>Clave de acceso<input type="password" name="token" autocomplete="current-password" required></label>
+          <button type="submit">Entrar a CUR</button>
+        </form>
+        <button type="button" id="reintentar-acceso" class="secundario" hidden>Reintentar</button>
+        <p id="msg-acceso" class="msg" role="status"></p>
+      </section>
       <section id="tab-dashboard" class="tab active">
         <header class="encabezado-pagina">
           <h1>Avance</h1>
@@ -63,6 +79,7 @@
             <p class="ayuda">Guarda cursos de cualquier fuente y actualiza su estado.</p>
           </div>
           <div class="pagina-acciones">
+            <button type="button" id="abrir-udemy" class="secundario" aria-haspopup="dialog"><span class="icono" aria-hidden="true">link</span> Importar Udemy</button>
             <button type="button" id="abrir-curso" aria-haspopup="dialog"><span class="icono" aria-hidden="true">add</span> Agregar curso</button>
           </div>
         </header>
@@ -80,6 +97,18 @@
           <p id="msg-catalogo" class="msg" role="status"></p>
         </div>
         <div id="lista-catalogo" class="lista catalogo-grid"></div>
+        <dialog id="udemy-dialog" class="curso-dialog" aria-labelledby="udemy-dialog-titulo">
+          <div class="dialog-encabezado">
+            <h2 id="udemy-dialog-titulo">Importar curso de Udemy</h2>
+            <button type="button" id="cerrar-udemy" class="secundario icono-boton" aria-label="Cerrar importación"><span class="icono" aria-hidden="true">close</span></button>
+          </div>
+          <form id="form-udemy" class="fila-col">
+            <label>Enlace del curso<input name="url" type="url" required placeholder="https://www.udemy.com/course/…"></label>
+            <label>Título (opcional)<input name="title" maxlength="200" placeholder="Se puede editar después"></label>
+            <p class="ayuda">Se conserva el cupón. Confirma el precio antes de marcarlo como gratis. <a class="enlace" href="https://www.udemy.com/courses/free/" target="_blank" rel="noopener">Ver cursos gratuitos</a></p>
+            <div class="fila"><button type="submit">Importar curso</button><span id="msg-udemy" class="msg" role="status"></span></div>
+          </form>
+        </dialog>
         <dialog id="curso-dialog" class="curso-dialog" aria-labelledby="curso-dialog-titulo">
           <div class="dialog-encabezado">
             <h2 id="curso-dialog-titulo">Agregar curso</h2>
