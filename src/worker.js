@@ -9,6 +9,13 @@ export default {
     const { pathname } = new URL(request.url);
 
     if (pathname.startsWith('/api/')) {
+      // Expose the UI while the deployment's API credentials are being configured.
+      if (!env.API_TOKEN && env.CUR_ALLOW_UNAUTHENTICATED_LOCAL !== 'true') {
+        return Response.json(
+          { error: 'Falta configurar API_TOKEN para acceder a los datos de CUR.' },
+          { status: 503, headers: { 'Cache-Control': 'no-store' } },
+        );
+      }
       const db = createDb(env.DB);
       const gemini = createGemini({
         apiKey: env.GEMINI_API_KEY,

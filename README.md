@@ -20,23 +20,22 @@ Crea el archivo `.dev.vars`, que está ignorado por Git:
 
 ```dotenv
 GEMINI_API_KEY=tu_clave_de_gemini
-# Opcional: exige este token en todas las solicitudes a /api/
 API_TOKEN=un_token_largo_y_aleatorio
+# Solo en .dev.vars, puedes usar CUR_ALLOW_UNAUTHENTICATED_LOCAL=true en lugar de API_TOKEN para desarrollo local.
 ```
 
-Crea la base D1 y copia el `database_id` devuelto en `wrangler.json`:
+Aplica las migraciones a la copia local de D1:
 
 ```sh
-npx wrangler d1 create cur
 npx wrangler d1 migrations apply cur --local
 npx wrangler dev
 ```
 
-Si configuras `API_TOKEN`, la interfaz pedirá el token al recibir una respuesta 401 y lo guardará en el navegador. Sin `API_TOKEN`, la API queda abierta; úsalo siempre en un despliegue accesible públicamente o protege el Worker con Cloudflare Access.
+La interfaz pide `API_TOKEN` al recibir una respuesta 401 y lo guarda en el navegador. Usa `CUR_ALLOW_UNAUTHENTICATED_LOCAL` únicamente en `.dev.vars`.
 
 ## Despliegue
 
-Tras configurar el `database_id`, aplica las migraciones y secretos remotos:
+`wrangler.json` referencia la base D1 `cur` de este proyecto. Para desplegarlo en otra cuenta, sustituye `database_id` por el ID de tu propia base. Aplica las migraciones y configura los secretos remotos:
 
 ```sh
 npx wrangler d1 migrations apply cur --remote
@@ -45,7 +44,7 @@ npx wrangler secret put API_TOKEN
 npx wrangler deploy
 ```
 
-`GEMINI_API_KEY` habilita generar y evaluar rutas. `API_TOKEN` es opcional, pero recomendado. El modelo se define con `GEMINI_MODEL` en `wrangler.json` y usa `gemini-2.5-flash` por defecto.
+`GEMINI_API_KEY` habilita generar y evaluar rutas. La API rechaza las solicitudes con 503 mientras falte `API_TOKEN` en el Worker. El modelo se define con `GEMINI_MODEL` en `wrangler.json` y usa `gemini-2.5-flash` por defecto.
 
 ## Pruebas
 
