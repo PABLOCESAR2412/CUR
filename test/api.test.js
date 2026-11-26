@@ -1,53 +1,35 @@
-import { test, before, after } from 'node:test';
+import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { openDb } from '../src/db.js';
-import { createApp } from '../src/app.js';
+import { createDb } from '../src/db.js';
+import { handleApi } from '../src/api.js';
+import { sqliteD1 } from './helpers/d1-sqlite.js';
 
-let server;
-let base;
 let db;
 let fakeReply = null;
-let gemini;
+let geminiEnabled = true;
 
-function fakeGemini({ enabled = true, reply = () => ({}) } = {}) {
-  return {
-    model: 'test-model',
-    enabled,
-    async generateJson() {
-      return reply();
-    },
-  };
-}
-
-before(async () => {
-  db = openDb(':memory:');
-  const publicDir = mkdtempSync(join(tmpdir(), 'cursos-public-'));
-  writeFileSync(join(publicDir, 'index.html'), '<!doctype html><title>ok</title>');
-  mkdirSync(join(publicDir, 'sub'));
-  gemini = fakeGemini({ reply: () => fakeReply });
-  const handler = createApp({ db, gemini, publicDir });
-  server = createServer(handler);
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  base = `http://127.0.0.1:${server.address().port}`;
+const gemini = () => ({
+  model: 'test-model',
+  get enabled() { return geminiEnabled; },
+  async generateJson() { return fakeReply; },
 });
 
-after(() => server.close());
+before(() => {
+  db = createDb(sqliteD1(['migrations/0001_init.sql']));
+});
 
-const call = async (method, path, body) => {
-  const res = await fetch(base + path, {
+async function call(method, path, body) {
+  const request = new Request(`http://test${path}`, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  const res = await handleApi(request, { db, gemini: gemini() });
   const text = await res.text();
   let json = null;
   try { json = JSON.parse(text); } catch { /* respuesta no JSON */ }
   return { status: res.status, body: json, text };
-};
+}
 
 test('crea, actualiza y elimina un curso', async () => {
   const created = await call('POST', '/api/cursos', {
@@ -136,21 +118,17 @@ test('evaluar ruta filtra cursos recomendados que no existen y normaliza veredic
 });
 
 test('rutas devuelve 503 si falta la clave de Gemini', async () => {
-  const disabled = createApp({ db, gemini: fakeGemini({ enabled: false }), publicDir: '/tmp' });
-  const s = createServer(disabled);
-  await new Promise((r) => s.listen(0, '127.0.0.1', r));
+  geminiEnabled = false;
   try {
-    const res = await fetch(`http://127.0.0.1:${s.address().port}/api/rutas/generar`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ objetivo: 'hola mundo' }),
-    });
+    const res = await call('POST', '/api/rutas/generar', { objetivo: 'hola mundo' });
     assert.equal(res.status, 503);
   } finally {
-    s.close();
+    geminiEnabled = true;
   }
 });
 
-test('no sirve archivos fuera de public/', async () => {
-  const res = await fetch(`${base}/..%2Fpackage.json`);
-  assert.notEqual(res.status, 200);
-  assert.equal((await fetch(`${base}/`)).status, 200);
+test('ruta de API desconocida responde 404 en JSON', async () => {
+  const res = await call('GET', '/api/no-existe');
+  assert.equal(res.status, 404);
+  assert.match(res.body.error, /no encontrada/);
 });
