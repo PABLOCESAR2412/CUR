@@ -7,10 +7,28 @@ export function sqliteD1(migrationFiles = []) {
   const db = new DatabaseSync(':memory:');
   for (const file of migrationFiles) db.exec(readFileSync(file, 'utf8'));
 
+  const writes = new WeakMap();
+
   return {
+    async batch(statements) {
+      db.exec('BEGIN');
+      try {
+        const results = statements.map((statement) => writes.get(statement)());
+        db.exec('COMMIT');
+        return results;
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+    },
+
     prepare(sql) {
       const stmt = db.prepare(sql);
       let params = [];
+      const run = () => {
+        const r = stmt.run(...params);
+        return { success: true, meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } };
+      };
       const api = {
         bind(...args) {
           params = args;
@@ -23,10 +41,10 @@ export function sqliteD1(migrationFiles = []) {
           return stmt.get(...params) ?? null;
         },
         async run() {
-          const r = stmt.run(...params);
-          return { success: true, meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } };
+          return run();
         },
       };
+      writes.set(api, run);
       return api;
     },
   };

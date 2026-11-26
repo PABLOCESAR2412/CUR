@@ -27,12 +27,15 @@ export function createGemini({ apiKey, model, fetchImpl = fetch }) {
         err.status = 502;
         throw err;
       }
-      const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
       try {
+        const data = await res.json();
+        const parts = data?.candidates?.[0]?.content?.parts;
+        const text = Array.isArray(parts)
+          ? parts.map((part) => typeof part?.text === 'string' ? part.text : '').join('')
+          : '';
         return JSON.parse(text);
       } catch {
-        const err = new Error('Gemini devolvió una respuesta que no es JSON válido');
+        const err = new Error('Gemini devolvió una respuesta que no es JSON válido. Vuelve a intentarlo.');
         err.status = 502;
         throw err;
       }

@@ -69,9 +69,11 @@ const parseId = (raw) => {
 async function handleRuta(kind, body, { db, gemini }) {
   if (!gemini.enabled) throw new HttpError(503, 'Falta GEMINI_API_KEY: configúrala para usar las rutas con IA');
   const cursos = await db.listCourses();
-  const ids = new Set(cursos.map((c) => c.id));
-  const perfil = describePerfil(await db.listSkills(), await db.getSettings());
-  const catalogo = compactCatalog(cursos);
+  const settings = await db.getSettings();
+  const perfil = describePerfil(await db.listSkills(), settings);
+  const candidatos = settings.presupuesto === 'gratis' ? cursos.filter((curso) => curso.price === 'gratis') : cursos;
+  const catalogo = compactCatalog(candidatos);
+  const ids = new Set(catalogo.map((curso) => curso.id));
 
   if (kind === 'generar') {
     const objetivo = typeof body.objetivo === 'string' ? body.objetivo.trim() : '';
@@ -155,16 +157,33 @@ async function route(request, url, deps) {
   }
 
   if (m === 'PUT' && path === '/api/perfil/settings') {
-    if (body.horas_semana !== undefined && body.horas_semana !== null && body.horas_semana !== '') {
-      const h = Number(body.horas_semana);
-      if (!Number.isFinite(h) || h < 0 || h > 168) throw new HttpError(400, 'Horas por semana inválidas');
-      await db.setSetting('horas_semana', h);
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      throw new HttpError(400, 'Las preferencias deben enviarse como un objeto');
     }
-    if (body.idioma !== undefined) await db.setSetting('idioma', String(body.idioma).trim() || 'es');
+
+    const settings = {};
+    const hours = body.horas_semana;
+    if (hours === null || (typeof hours === 'string' && hours.trim() === '')) {
+      settings.horas_semana = null;
+    } else if (hours !== undefined) {
+      if (typeof hours !== 'number' && typeof hours !== 'string') {
+        throw new HttpError(400, 'Horas por semana inválidas');
+      }
+      const value = Number(hours);
+      if (!Number.isFinite(value) || value < 0 || value > 168) {
+        throw new HttpError(400, 'Horas por semana inválidas');
+      }
+      settings.horas_semana = value;
+    }
+    if (body.idioma !== undefined) {
+      if (typeof body.idioma !== 'string') throw new HttpError(400, 'Idioma inválido');
+      settings.idioma = body.idioma.trim() || 'es';
+    }
     if (body.presupuesto !== undefined) {
       if (!['gratis', 'pago', 'cualquiera'].includes(body.presupuesto)) throw new HttpError(400, 'Presupuesto inválido');
-      await db.setSetting('presupuesto', body.presupuesto);
+      settings.presupuesto = body.presupuesto;
     }
+    await db.setSettings(settings);
     return [200, await db.getSettings()];
   }
 
