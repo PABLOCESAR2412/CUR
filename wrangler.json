@@ -16,5 +16,16 @@
   ],
   "vars": {
     "GEMINI_MODEL": "gemini-2.5-flash"
+  },
+  "previews": {
+    "vars": {
+      "GEMINI_MODEL": "gemini-2.5-flash"
+    },
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_id": "d9b0bb8a-e1f6-470a-b902-c3363b3a9943"
+      }
+    ]
   }
 }
